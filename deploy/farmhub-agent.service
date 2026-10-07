@@ -1,0 +1,24 @@
+[Unit]
+Description=FarmHub Autonomous Irrigation AI Agent Service
+After=network-online.target mosquitto.service
+Wants=network-online.target mosquitto.service
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/RasberryPI
+EnvironmentFile=/home/pi/RasberryPI/.env
+ExecStart=/home/pi/RasberryPI/.venv/bin/python agent/main.py --host localhost --port 1883
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=farmhub-agent
+
+# Sandboxing & Resource constraints for Pi Zero 2 (512MB RAM)
+MemoryMax=150M
+Nice=5
+
+[Install]
+WantedBy=multi-user.target

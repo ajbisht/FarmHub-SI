@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+
+# Environment secrets
+.env
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# PlatformIO / Firmware
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# Logs
+*.log
+
+# OS artifacts
+.DS_Store
+Thumbs.db

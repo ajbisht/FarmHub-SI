@@ -1,0 +1,166 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 480" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0b1120"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="cardGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e293b" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#0f172a" stop-opacity="0.8"/>
+    </linearGradient>
+    <linearGradient id="greenPulse" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#10b981" stop-opacity="0"/>
+      <stop offset="50%" stop-color="#10b981" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#10b981" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="glowGreen" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+    <filter id="glowCyan" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+    <style>
+      .title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-weight: 800; fill: #f8fafc; font-size: 20px; }
+      .subtitle { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-weight: 500; fill: #94a3b8; font-size: 13px; }
+      .box-title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-weight: 700; fill: #38bdf8; font-size: 14px; }
+      .box-desc { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-weight: 400; fill: #cbd5e1; font-size: 11px; }
+      .badge { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-weight: 700; font-size: 10px; fill: #fff; }
+      
+      @keyframes dashAnim {
+        from { stroke-dashoffset: 60; }
+        to { stroke-dashoffset: 0; }
+      }
+      @keyframes pulseDot {
+        0%, 100% { opacity: 0.2; transform: scale(0.8); }
+        50% { opacity: 1; transform: scale(1.2); }
+      }
+      .anim-flow {
+        stroke-dasharray: 6 6;
+        animation: dashAnim 1.5s linear infinite;
+      }
+      .anim-rev {
+        stroke-dasharray: 6 6;
+        animation: dashAnim 1.5s linear infinite reverse;
+      }
+    </style>
+  </defs>
+
+  <!-- Background -->
+  <rect width="960" height="480" rx="16" fill="url(#bgGrad)" stroke="#1e293b" stroke-width="2"/>
+
+  <!-- Top Title -->
+  <text x="480" y="42" text-anchor="middle" class="title">Autonomous Farm Irrigation — End-to-End Control Loop</text>
+  <text x="480" y="66" text-anchor="middle" class="subtitle">Real Sensors • 2.4 GHz WiFi MQTT • Agentic AI Reasoning • Closed-Loop Soil Verification</text>
+
+  <!-- ============================================================================== -->
+  <!-- NODE 1: FIELD SENSORS & TOMATO BED -->
+  <!-- ============================================================================== -->
+  <g transform="translate(40, 110)">
+    <rect width="240" height="310" rx="14" fill="url(#cardGrad)" stroke="#334155" stroke-width="1.5"/>
+    <rect x="16" y="16" width="70" height="20" rx="6" fill="#10b981" fill-opacity="0.2"/>
+    <text x="51" y="30" text-anchor="middle" fill="#34d399" class="badge">STEP 1 & 6</text>
+    
+    <text x="16" y="60" class="box-title" fill="#34d399">🍅 Field Node &amp; Plants</text>
+    <text x="16" y="80" class="box-desc">5 Tomato Plants in Garden Bed</text>
+
+    <!-- Sub-elements -->
+    <rect x="16" y="100" width="208" height="56" rx="8" fill="#0f172a" stroke="#1e293b"/>
+    <text x="26" y="122" font-size="12" font-weight="600" fill="#f8fafc">Capacitive Moisture v2</text>
+    <text x="26" y="142" font-size="11" fill="#94a3b8">Analog Pin GPIO34 (0-100%)</text>
+
+    <rect x="16" y="166" width="208" height="56" rx="8" fill="#0f172a" stroke="#1e293b"/>
+    <text x="26" y="188" font-size="12" font-weight="600" fill="#f8fafc">50L Drum Float Switch</text>
+    <text x="26" y="208" font-size="11" fill="#94a3b8">Digital Pin GPIO35 (OK / LOW)</text>
+
+    <rect x="16" y="232" width="208" height="60" rx="8" fill="#0f172a" stroke="#1e293b"/>
+    <text x="26" y="254" font-size="12" font-weight="600" fill="#f8fafc">12V Submersible Pump</text>
+    <text x="26" y="274" font-size="11" fill="#94a3b8">5V Relay (GPIO25 Switched)</text>
+  </g>
+
+  <!-- ============================================================================== -->
+  <!-- NODE 2: ESP32 FIELD CONTROLLER -->
+  <!-- ============================================================================== -->
+  <g transform="translate(360, 110)">
+    <rect width="240" height="310" rx="14" fill="url(#cardGrad)" stroke="#38bdf8" stroke-width="1.5"/>
+    <rect x="16" y="16" width="70" height="20" rx="6" fill="#0284c7" fill-opacity="0.2"/>
+    <text x="51" y="30" text-anchor="middle" fill="#38bdf8" class="badge">ESP32 DevKit</text>
+
+    <text x="16" y="60" class="box-title">⚡ ESP32 Field Controller</text>
+    <text x="16" y="80" class="box-desc">PlatformIO C++ Firmware</text>
+
+    <rect x="16" y="100" width="208" height="48" rx="8" fill="#0f172a" stroke="#1e293b"/>
+    <text x="26" y="122" font-size="12" font-weight="600" fill="#f8fafc">16x Sample ADC Averaging</text>
+    <text x="26" y="138" font-size="11" fill="#94a3b8">Filters buck converter noise</text>
+
+    <rect x="16" y="158" width="208" height="48" rx="8" fill="#0f172a" stroke="#1e293b"/>
+    <text x="26" y="180" font-size="12" font-weight="600" fill="#f8fafc">Active 20s Listen Window</text>
+    <text x="26" y="196" font-size="11" fill="#94a3b8">Awaits pump commands</text>
+
+    <rect x="16" y="216" width="208" height="48" rx="8" fill="#0f172a" stroke="#1e293b"/>
+    <text x="26" y="238" font-size="12" font-weight="600" fill="#f8fafc">Ultra-Low Deep Sleep</text>
+    <text x="26" y="254" font-size="11" fill="#94a3b8">Conserves 12V Li-ion battery</text>
+
+    <rect x="16" y="274" width="208" height="24" rx="6" fill="#0284c7" fill-opacity="0.15"/>
+    <text x="120" y="290" text-anchor="middle" font-size="11" font-weight="700" fill="#38bdf8">Fail-Safe: Off on Disconnect</text>
+  </g>
+
+  <!-- ============================================================================== -->
+  <!-- NODE 3: RASPBERRY PI BRAIN & AI AGENT -->
+  <!-- ============================================================================== -->
+  <g transform="translate(680, 110)">
+    <rect width="240" height="310" rx="14" fill="url(#cardGrad)" stroke="#a855f7" stroke-width="1.5"/>
+    <rect x="16" y="16" width="70" height="20" rx="6" fill="#a855f7" fill-opacity="0.2"/>
+    <text x="51" y="30" text-anchor="middle" fill="#c084fc" class="badge">PI ZERO 2</text>
+
+    <text x="16" y="60" class="box-title" fill="#c084fc">🧠 Central Brain / Agent</text>
+    <text x="16" y="80" class="box-desc">Mosquitto • Python • FastAPI</text>
+
+    <rect x="16" y="100" width="208" height="48" rx="8" fill="#0f172a" stroke="#1e293b"/>
+    <text x="26" y="120" font-size="12" font-weight="600" fill="#f8fafc">Groq LLM (Llama 3.3)</text>
+    <text x="26" y="136" font-size="11" fill="#94a3b8">+ Gemini Flash Fallback</text>
+
+    <rect x="16" y="158" width="208" height="48" rx="8" fill="#0f172a" stroke="#1e293b"/>
+    <text x="26" y="178" font-size="12" font-weight="600" fill="#f8fafc">Hard Code Guardrails</text>
+    <text x="26" y="194" font-size="11" fill="#94a3b8">Max 45s • 2h gap • 4/day cap</text>
+
+    <rect x="16" y="216" width="208" height="48" rx="8" fill="#0f172a" stroke="#1e293b"/>
+    <text x="26" y="236" font-size="12" font-weight="600" fill="#f8fafc">Closed-Loop Verification</text>
+    <text x="26" y="252" font-size="11" fill="#94a3b8">Checks moisture rose +8%</text>
+
+    <rect x="16" y="274" width="208" height="24" rx="6" fill="#10b981" fill-opacity="0.15"/>
+    <text x="120" y="290" text-anchor="middle" font-size="11" font-weight="700" fill="#34d399">PWA Phone Dashboard :8000</text>
+  </g>
+
+  <!-- ============================================================================== -->
+  <!-- CONNECTING ARROWS & ANIMATED PACKETS -->
+  <!-- ============================================================================== -->
+  
+  <!-- Arrow 1: Sensors -> ESP32 (Green) -->
+  <path d="M 280 200 L 360 200" stroke="#10b981" stroke-width="2.5" class="anim-flow"/>
+  <polygon points="358,196 366,200 358,204" fill="#10b981"/>
+  <text x="320" y="190" text-anchor="middle" font-size="9" font-weight="700" fill="#34d399">ANALOG/DIG</text>
+
+  <!-- Arrow 2: ESP32 -> Pi Telemetry (Cyan) -->
+  <path d="M 600 200 L 680 200" stroke="#06b6d4" stroke-width="2.5" class="anim-flow" filter="url(#glowCyan)"/>
+  <polygon points="678,196 686,200 678,204" fill="#06b6d4"/>
+  <text x="640" y="190" text-anchor="middle" font-size="9" font-weight="700" fill="#38bdf8">MQTT TELEMETRY</text>
+
+  <!-- Arrow 3: Pi -> ESP32 Pump Command (Purple) -->
+  <path d="M 680 260 L 600 260" stroke="#c084fc" stroke-width="2.5" class="anim-rev"/>
+  <polygon points="602,256 594,260 602,264" fill="#c084fc"/>
+  <text x="640" y="280" text-anchor="middle" font-size="9" font-weight="700" fill="#c084fc">PUMP COMMAND</text>
+
+  <!-- Arrow 4: ESP32 -> Relay Actuation (Emerald) -->
+  <path d="M 360 260 L 280 260" stroke="#10b981" stroke-width="2.5" class="anim-rev"/>
+  <polygon points="282,256 274,260 282,264" fill="#10b981"/>
+  <text x="320" y="280" text-anchor="middle" font-size="9" font-weight="700" fill="#34d399">RELAY TRIGGER</text>
+
+  <!-- Bottom Legend / Status -->
+  <g transform="translate(480, 450)">
+    <text x="0" y="0" text-anchor="middle" font-size="12" fill="#64748b">
+      🔒 100% Fail-Safe: ESP32 valve stays closed if WiFi, Pi, or LLM drops • Total 12V DC Low-Voltage Safety
+    </text>
+  </g>
+</svg>

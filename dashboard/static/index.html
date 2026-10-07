@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0b1120">
+  <title>FarmHub Autonomous Irrigation</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/app.css">
+  <!-- Chart.js for lightweight live trend graph -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <div class="dashboard-container">
+
+    <!-- Header -->
+    <header class="header-card">
+      <div class="brand">
+        <span class="brand-icon">🍅</span>
+        <div>
+          <h1 class="brand-title">FarmHub Irrigation</h1>
+          <p class="brand-subtitle">5 Tomato Plants • Closed-Loop POC</p>
+        </div>
+      </div>
+      <div id="connectionBadge" class="connection-badge disconnected">
+        <span class="status-dot"></span>
+        <span id="connectionText">Connecting...</span>
+      </div>
+    </header>
+
+    <!-- Alert Banner (Appears on Drum LOW or Sensor Anomaly) -->
+    <div id="alertBanner" class="alert-banner">
+      <span>⚠️</span>
+      <span id="alertMessage">Critical: Drum level is LOW!</span>
+    </div>
+
+    <!-- Live Moisture & Reservoir Gauge -->
+    <main class="gauge-card">
+      <div class="gauge-wrapper">
+        <svg class="gauge-svg" viewBox="0 0 200 200">
+          <circle class="gauge-bg" cx="100" cy="100" r="90" />
+          <circle id="gaugeProgress" class="gauge-progress" cx="100" cy="100" r="90" />
+        </svg>
+        <div class="gauge-center">
+          <div>
+            <span id="moistureValue" class="gauge-val">--</span>
+            <span class="gauge-unit">%</span>
+          </div>
+          <span class="gauge-label">Soil Moisture</span>
+        </div>
+      </div>
+
+      <!-- Quick Metrics Grid -->
+      <div class="metrics-grid">
+        <div class="metric-pill">
+          <span class="metric-pill-title">Drum Reservoir</span>
+          <span id="drumBadge" class="metric-pill-value" style="color: #10b981;">
+            💧 <span id="drumValue">OK</span>
+          </span>
+        </div>
+        <div class="metric-pill">
+          <span class="metric-pill-title">Pump Actuator</span>
+          <span id="pumpBadge" class="metric-pill-value" style="color: #94a3b8;">
+            ⚙️ <span id="pumpValue">IDLE</span>
+          </span>
+        </div>
+        <div class="metric-pill">
+          <span class="metric-pill-title">Field Battery</span>
+          <span class="metric-pill-value">
+            🔋 <span id="batteryValue">12.2V</span>
+          </span>
+        </div>
+        <div class="metric-pill">
+          <span class="metric-pill-title">Raw ADC</span>
+          <span class="metric-pill-value">
+            📡 <span id="adcValue">--</span>
+          </span>
+        </div>
+      </div>
+    </main>
+
+    <!-- Manual Overrides -->
+    <section class="controls-card">
+      <h2 class="card-heading">Manual Controls</h2>
+      <div class="button-row">
+        <button id="btnWater" class="btn btn-water">
+          💧 Water 30s Now
+        </button>
+        <button id="btnStop" class="btn btn-stop">
+          🛑 Stop
+        </button>
+      </div>
+    </section>
+
+    <!-- AI Intelligence & Reasoning -->
+    <section class="ai-card">
+      <div class="ai-header">
+        <h2 class="card-heading">AI Reasoning</h2>
+        <span id="aiActionTag" class="ai-decision-tag SKIP">--</span>
+      </div>
+      <div class="ai-reasoning-box">
+        <p id="aiReasoningText">Waiting for next autonomous sense & decision cycle...</p>
+      </div>
+    </section>
+
+    <!-- 24-Hour Trend Chart -->
+    <section class="chart-card">
+      <h2 class="card-heading">Moisture Trend (24h)</h2>
+      <div class="chart-wrapper">
+        <canvas id="moistureChart"></canvas>
+      </div>
+    </section>
+
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
