@@ -1,0 +1,16 @@
+.gcloudignore
+.git
+.gitignore
+.pytest_cache/
+__pycache__/
+*.pyc
+.env
+*.db
+tests/
+firmware/
+deploy/
+docs/
+assets/
+lokkatha-ai-manager/
+.venv/
+venv/

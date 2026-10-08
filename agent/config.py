@@ -32,14 +32,34 @@ class Settings:
     longitude: float = float(os.getenv("LONGITUDE", "77.45"))
     location_name: str = os.getenv("LOCATION_NAME", "Ghaziabad, IN")
 
-    # API Keys
+    # Weather API
     openweather_api_key: str = os.getenv("OPENWEATHER_API_KEY", "")
+
+    # LLM Provider Selection: "groq" | "openai" | "anthropic" | "gemini" | "ollama" | "local"
+    llm_provider: str = os.getenv("LLM_PROVIDER", "groq").lower()
+
+    # Provider 1: Groq
     groq_api_key: str = os.getenv("GROQ_API_KEY", "")
     groq_model: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+
+    # Provider 2: OpenAI
+    openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
+    openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+
+    # Provider 3: Anthropic
+    anthropic_api_key: str = os.getenv("ANTHROPIC_API_KEY", "")
+    anthropic_model: str = os.getenv("ANTHROPIC_MODEL", "claude-3-5-haiku-20241022")
+
+    # Provider 4: Google Gemini
     gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
+    gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+
+    # Provider 5: Local Ollama
+    ollama_base_url: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    ollama_model: str = os.getenv("OLLAMA_MODEL", "llama3.2")
 
     # Timings (Minutes)
-    sense_interval_min: int = int(os.getenv("SENSE_INTERVAL_MIN", "10"))
+    sense_interval_min: int = int(os.getenv("SENSE_INTERVAL_MIN", "2"))
     verify_delay_min: int = int(os.getenv("VERIFY_DELAY_MIN", "15"))
 
     # Guardrails

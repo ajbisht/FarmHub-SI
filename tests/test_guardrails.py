@@ -182,3 +182,57 @@ def test_normal_dry_soil_watering_approved(guardrails, sunny_weather):
     assert verdict.final_action == "WATER"
     assert verdict.final_duration_sec == 30
     assert verdict.verdict_type == "APPROVED"
+
+
+def test_low_battery_blocks_pump(guardrails, sunny_weather):
+    """Safety Rule 6: Critical battery (<11.0V) must lock pump to prevent Li-ion damage."""
+    verdict = guardrails.evaluate(
+        proposed_action="WATER",
+        proposed_duration_sec=30,
+        current_moisture_pct=25.0,
+        drum_level="OK",
+        weather=sunny_weather,
+        last_pump_time=None,
+        waterings_in_last_24h=0,
+        battery_v=10.6,  # Critically low battery
+    )
+    assert verdict.approved is False
+    assert verdict.final_action == "SKIP"
+    assert verdict.verdict_type == "BLOCKED"
+    assert "Battery voltage critically low" in verdict.reason
+
+
+def test_sensor_fault_blocks_pump(guardrails, sunny_weather):
+    """Safety Rule 7: Disconnected sensor (ADC < 500 or > 3600) must lock pump."""
+    verdict = guardrails.evaluate(
+        proposed_action="WATER",
+        proposed_duration_sec=30,
+        current_moisture_pct=20.0,
+        drum_level="OK",
+        weather=sunny_weather,
+        last_pump_time=None,
+        waterings_in_last_24h=0,
+        raw_adc=150,  # Unplugged / Short
+    )
+    assert verdict.approved is False
+    assert verdict.final_action == "SKIP"
+    assert verdict.verdict_type == "BLOCKED"
+    assert "out of physical range" in verdict.reason
+
+
+def test_consecutive_verification_failures_blocks_pump(guardrails, sunny_weather):
+    """Safety Rule 8: 2 consecutive verification anomalies indicates burst pipe or clog."""
+    verdict = guardrails.evaluate(
+        proposed_action="WATER",
+        proposed_duration_sec=30,
+        current_moisture_pct=20.0,
+        drum_level="OK",
+        weather=sunny_weather,
+        last_pump_time=None,
+        waterings_in_last_24h=0,
+        consecutive_verification_failures=2,
+    )
+    assert verdict.approved is False
+    assert verdict.final_action == "SKIP"
+    assert verdict.verdict_type == "BLOCKED"
+    assert "consecutive waterings failed" in verdict.reason

@@ -1,0 +1,22 @@
+{
+  "hosting": {
+    "site": "highlanders-farmhub",
+    "public": "dashboard/static",
+    "cleanUrls": true,
+    "trailingSlash": false,
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "run": {
+          "serviceId": "farmhub-agent",
+          "region": "asia-south1"
+        }
+      }
+    ]
+  }
+}

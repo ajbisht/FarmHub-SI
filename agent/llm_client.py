@@ -1,5 +1,6 @@
 import json
 import logging
+import ssl
 from dataclasses import dataclass
 from typing import Optional, Dict, Any, List
 import httpx
@@ -7,6 +8,15 @@ from agent.config import config
 from agent.weather import WeatherReport
 
 logger = logging.getLogger("LLMClient")
+
+
+def get_ssl_context():
+    try:
+        ctx = ssl.create_default_context()
+        ctx.load_default_certs()
+        return ctx
+    except Exception:
+        return True
 
 
 @dataclass
@@ -49,9 +59,17 @@ class LLMClient:
     """
 
     def __init__(self):
+        self.provider = config.llm_provider
         self.groq_key = config.groq_api_key
         self.groq_model = config.groq_model
+        self.openai_key = config.openai_api_key
+        self.openai_model = config.openai_model
+        self.anthropic_key = config.anthropic_api_key
+        self.anthropic_model = config.anthropic_model
         self.gemini_key = config.gemini_api_key
+        self.gemini_model = config.gemini_model
+        self.ollama_base = config.ollama_base_url
+        self.ollama_model = config.ollama_model
 
     def decide(
         self,
@@ -60,24 +78,41 @@ class LLMClient:
         weather: WeatherReport,
         recent_history: List[Dict[str, Any]],
     ) -> LLMDecision:
-        """Asks the LLM whether to water, falling back gracefully if needed."""
+        """Asks the configured LLM whether to water, falling back gracefully if needed."""
         user_prompt = self._build_prompt(current_moisture_pct, drum_level, weather, recent_history)
 
-        # 1. Try Groq (Primary)
-        if self.groq_key and not self.groq_key.startswith("your_"):
+        decision: Optional[LLMDecision] = None
+
+        # 1. Primary provider based on LLM_PROVIDER in .env
+        if self.provider == "openai" and self.openai_key and not self.openai_key.startswith("your_"):
+            decision = self._call_openai(user_prompt)
+        elif self.provider == "anthropic" and self.anthropic_key and not self.anthropic_key.startswith("your_"):
+            decision = self._call_anthropic(user_prompt)
+        elif self.provider == "gemini" and self.gemini_key and not self.gemini_key.startswith("your_"):
+            decision = self._call_gemini(user_prompt)
+        elif self.provider == "ollama":
+            decision = self._call_ollama(user_prompt)
+        elif self.provider == "groq" and self.groq_key and not self.groq_key.startswith("your_"):
+            decision = self._call_groq(user_prompt)
+
+        if decision:
+            return decision
+
+        # 2. Automatic Fallbacks if primary was unavailable
+        if self.provider != "groq" and self.groq_key and not self.groq_key.startswith("your_"):
+            logger.info("Falling back to Groq...")
             decision = self._call_groq(user_prompt)
             if decision:
                 return decision
 
-        # 2. Try Gemini Flash (Fallback)
-        if self.gemini_key and not self.gemini_key.startswith("your_"):
-            logger.info("Attempting Gemini Flash fallback...")
+        if self.provider != "gemini" and self.gemini_key and not self.gemini_key.startswith("your_"):
+            logger.info("Falling back to Gemini Flash...")
             decision = self._call_gemini(user_prompt)
             if decision:
                 return decision
 
-        # 3. Deterministic Local Agronomy Rule Fallback (Offline / No API Key)
-        logger.info("Using local agronomy rule engine (Offline/No API key mode).")
+        # 3. Deterministic Local Agronomy Rule Fallback (Offline / Zero API Keys)
+        logger.info("Using local agronomy rule engine (Offline/Deterministic mode).")
         return self._local_rule_fallback(current_moisture_pct, drum_level, weather)
 
     def _build_prompt(
@@ -102,17 +137,64 @@ class LLMClient:
 Determine whether to WATER or SKIP and return your JSON response."""
 
     def _call_groq(self, prompt: str) -> Optional[LLMDecision]:
-        """Calls Groq free tier with JSON response format."""
+        """Calls Groq free tier with JSON response format and resilient model fallback."""
+        candidate_models = [
+            self.groq_model,
+            "openai/gpt-oss-120b",
+            "openai/gpt-oss-20b",
+            "qwen/qwen3.8-27b",
+        ]
+        models_to_try = [m for i, m in enumerate(candidate_models) if m and m not in candidate_models[:i]]
+
+        for model in models_to_try:
+            try:
+                with httpx.Client(timeout=20.0, verify=get_ssl_context()) as client:
+                    resp = client.post(
+                        "https://api.groq.com/openai/v1/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {self.groq_key}",
+                            "Content-Type": "application/json",
+                        },
+                        json={
+                            "model": model,
+                            "messages": [
+                                {"role": "system", "content": SYSTEM_PROMPT},
+                                {"role": "user", "content": prompt},
+                            ],
+                            "temperature": 0.1,
+                            "response_format": {"type": "json_object"},
+                        },
+                    )
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        content = data["choices"][0]["message"]["content"]
+                        parsed = json.loads(content)
+
+                        return LLMDecision(
+                            action=parsed.get("action", "SKIP").upper(),
+                            duration_sec=int(parsed.get("duration_sec", 0)),
+                            reasoning=parsed.get("reasoning", "Decided by Groq"),
+                            model_name=f"Groq ({model})",
+                        )
+                    else:
+                        logger.warning(f"Groq model '{model}' returned HTTP {resp.status_code}: {resp.text}")
+            except Exception as e:
+                logger.error(f"Groq model '{model}' failed: {e}")
+
+        return None
+
+    def _call_openai(self, prompt: str) -> Optional[LLMDecision]:
+        """Calls OpenAI Chat Completions API with JSON response format."""
         try:
-            with httpx.Client(timeout=20.0) as client:
+            with httpx.Client(timeout=20.0, verify=get_ssl_context()) as client:
                 resp = client.post(
-                    "https://api.groq.com/openai/v1/chat/completions",
+                    "https://api.openai.com/v1/chat/completions",
                     headers={
-                        "Authorization": f"Bearer {self.groq_key}",
+                        "Authorization": f"Bearer {self.openai_key}",
                         "Content-Type": "application/json",
                     },
                     json={
-                        "model": self.groq_model,
+                        "model": self.openai_model,
                         "messages": [
                             {"role": "system", "content": SYSTEM_PROMPT},
                             {"role": "user", "content": prompt},
@@ -129,24 +211,93 @@ Determine whether to WATER or SKIP and return your JSON response."""
                 return LLMDecision(
                     action=parsed.get("action", "SKIP").upper(),
                     duration_sec=int(parsed.get("duration_sec", 0)),
-                    reasoning=parsed.get("reasoning", "Decided by Groq"),
-                    model_name=f"Groq ({self.groq_model})",
+                    reasoning=parsed.get("reasoning", "Decided by OpenAI"),
+                    model_name=f"OpenAI ({self.openai_model})",
                 )
         except Exception as e:
-            logger.error(f"Groq API call failed: {e}")
+            logger.error(f"OpenAI API call failed: {e}")
+            return None
+
+    def _call_anthropic(self, prompt: str) -> Optional[LLMDecision]:
+        """Calls Anthropic Messages API."""
+        try:
+            with httpx.Client(timeout=25.0, verify=get_ssl_context()) as client:
+                resp = client.post(
+                    "https://api.anthropic.com/v1/messages",
+                    headers={
+                        "x-api-key": self.anthropic_key,
+                        "anthropic-version": "2023-06-01",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": self.anthropic_model,
+                        "max_tokens": 1024,
+                        "system": SYSTEM_PROMPT,
+                        "messages": [
+                            {"role": "user", "content": prompt},
+                        ],
+                        "temperature": 0.1,
+                    },
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                content = data["content"][0]["text"]
+                clean_json = content.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+                parsed = json.loads(clean_json)
+
+                return LLMDecision(
+                    action=parsed.get("action", "SKIP").upper(),
+                    duration_sec=int(parsed.get("duration_sec", 0)),
+                    reasoning=parsed.get("reasoning", "Decided by Anthropic"),
+                    model_name=f"Anthropic ({self.anthropic_model})",
+                )
+        except Exception as e:
+            logger.error(f"Anthropic API call failed: {e}")
+            return None
+
+    def _call_ollama(self, prompt: str) -> Optional[LLMDecision]:
+        """Calls local Ollama server via its OpenAI-compatible endpoint."""
+        try:
+            url = f"{self.ollama_base.rstrip('/')}/v1/chat/completions"
+            with httpx.Client(timeout=30.0, verify=get_ssl_context()) as client:
+                resp = client.post(
+                    url,
+                    json={
+                        "model": self.ollama_model,
+                        "messages": [
+                            {"role": "system", "content": SYSTEM_PROMPT},
+                            {"role": "user", "content": prompt},
+                        ],
+                        "temperature": 0.1,
+                    },
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                content = data["choices"][0]["message"]["content"]
+                clean_json = content.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+                parsed = json.loads(clean_json)
+
+                return LLMDecision(
+                    action=parsed.get("action", "SKIP").upper(),
+                    duration_sec=int(parsed.get("duration_sec", 0)),
+                    reasoning=parsed.get("reasoning", "Decided by local Ollama"),
+                    model_name=f"Ollama ({self.ollama_model})",
+                )
+        except Exception as e:
+            logger.error(f"Ollama call failed at {self.ollama_base}: {e}")
             return None
 
     def _call_gemini(self, prompt: str) -> Optional[LLMDecision]:
-        """Calls Gemini 1.5 Flash fallback."""
+        """Calls Gemini Flash API."""
         try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={self.gemini_key}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.gemini_model}:generateContent?key={self.gemini_key}"
             payload = {
                 "contents": [
                     {"role": "user", "parts": [{"text": f"{SYSTEM_PROMPT}\n\n{prompt}"}]}
                 ],
                 "generationConfig": {"temperature": 0.1, "responseMimeType": "application/json"},
             }
-            with httpx.Client(timeout=20.0) as client:
+            with httpx.Client(timeout=20.0, verify=get_ssl_context()) as client:
                 resp = client.post(url, json=payload)
                 resp.raise_for_status()
                 data = resp.json()
@@ -156,8 +307,8 @@ Determine whether to WATER or SKIP and return your JSON response."""
                 return LLMDecision(
                     action=parsed.get("action", "SKIP").upper(),
                     duration_sec=int(parsed.get("duration_sec", 0)),
-                    reasoning=parsed.get("reasoning", "Decided by Gemini Flash"),
-                    model_name="Gemini 1.5 Flash",
+                    reasoning=parsed.get("reasoning", "Decided by Gemini"),
+                    model_name=f"Gemini ({self.gemini_model})",
                 )
         except Exception as e:
             logger.error(f"Gemini API call failed: {e}")
@@ -197,3 +348,35 @@ Determine whether to WATER or SKIP and return your JSON response."""
                 reasoning=f"Soil moisture is optimal ({moisture:.1f}%). No additional water needed.",
                 model_name="Local Agronomy Engine (Offline)",
             )
+
+
+if __name__ == "__main__":
+    print("\n" + "=" * 65)
+    print("[AgriAgent] Standalone LLM Provider Diagnostic Test")
+    print("=" * 65)
+    print(f"Active Provider (from .env): {config.llm_provider.upper()}")
+
+    client = LLMClient()
+    mock_weather = WeatherReport(
+        temp_c=31.5,
+        humidity_pct=42,
+        rain_expected_next_3h=False,
+        rain_probability_pct=5,
+        description="Clear sky, sunny",
+        is_live_data=False,
+    )
+
+    print("\nTesting dry soil scenario: Soil 26.5%, Drum OK, 31.5 C Sunny...")
+    decision = client.decide(
+        current_moisture_pct=26.5,
+        drum_level="OK",
+        weather=mock_weather,
+        recent_history=[{"moisture_pct": 32.0}, {"moisture_pct": 29.1}, {"moisture_pct": 26.5}],
+    )
+
+    print("\n--- LLM Decision Result ---")
+    print(f"- Action:      {decision.action}")
+    print(f"- Duration:    {decision.duration_sec} seconds")
+    print(f"- Engine Used: {decision.model_name}")
+    print(f"- Reasoning:   {decision.reasoning}")
+    print("=" * 65 + "\n")

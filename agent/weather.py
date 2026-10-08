@@ -1,10 +1,20 @@
 import logging
+import ssl
 from dataclasses import dataclass
 from typing import Optional, Dict, Any
 import httpx
 from agent.config import config
 
 logger = logging.getLogger("WeatherClient")
+
+
+def get_ssl_context():
+    try:
+        ctx = ssl.create_default_context()
+        ctx.load_default_certs()
+        return ctx
+    except Exception:
+        return True
 
 
 @dataclass
@@ -43,7 +53,7 @@ class WeatherClient:
             )
 
         try:
-            with httpx.Client(timeout=8.0) as client:
+            with httpx.Client(timeout=8.0, verify=get_ssl_context()) as client:
                 # 1. Fetch current weather
                 current_resp = client.get(
                     f"{self.BASE_URL}/weather",

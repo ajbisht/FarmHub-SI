@@ -150,6 +150,23 @@ class FarmDatabase:
             row = cursor.fetchone()
             return row["count"] if row else 0
 
+    def get_consecutive_anomalies(self) -> int:
+        """Returns the number of consecutive ANOMALY pump events since the last VERIFIED event."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT status FROM pump_events 
+                ORDER BY timestamp DESC LIMIT 5
+            """)
+            rows = cursor.fetchall()
+            count = 0
+            for r in rows:
+                if r["status"] == "ANOMALY":
+                    count += 1
+                elif r["status"] == "VERIFIED":
+                    break
+            return count
+
     # --- AI Decisions Methods ---
     def record_decision(self, action: str, proposed_duration: int, approved_duration: int, reasoning: str, guardrail_verdict: str, weather_summary: str, model_used: str):
         with self._get_connection() as conn:

@@ -1,17 +1,21 @@
 import asyncio
 import json
 import logging
+import os
 import random
 import sys
+import threading
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Set, Dict, Any, Optional
+from typing import Set, Dict, Any, Optional, List
+from pydantic import BaseModel
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 import paho.mqtt.client as mqtt
+import httpx
 
 # Add root directory to sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -102,9 +106,18 @@ class DashboardMQTTBridge:
             now_iso = datetime.now(timezone.utc).isoformat()
 
             if topic == TOPIC_SOIL_MOISTURE:
-                self.latest_state["moisture_pct"] = float(payload.get("moisture_pct", 0.0))
-                self.latest_state["raw_adc"] = payload.get("raw", 0)
+                moisture = float(payload.get("moisture_pct", 0.0))
+                raw_adc = payload.get("raw", 0)
+                self.latest_state["moisture_pct"] = moisture
+                self.latest_state["raw_adc"] = raw_adc
                 self.latest_state["last_updated"] = now_iso
+                # Persist reading to database so 24-hour trend chart and history API populate
+                self.db.record_reading(
+                    moisture_pct=moisture,
+                    raw_adc=raw_adc,
+                    drum_level=self.latest_state.get("drum_level", "OK"),
+                    battery_v=self.latest_state.get("battery_v", 12.0),
+                )
 
             elif topic == TOPIC_DRUM_LEVEL:
                 self.latest_state["drum_level"] = payload.get("level", "OK")
@@ -192,15 +205,40 @@ class DashboardMQTTBridge:
 
 
 bridge = DashboardMQTTBridge(host=config.mqtt_host, port=config.mqtt_port)
+agent_service_instance = None
+agent_worker_thread = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global agent_service_instance, agent_worker_thread
     # Startup: Capture the main event loop and start MQTT Bridge
     bridge.loop = asyncio.get_running_loop()
     bridge.start()
+
+    # Boot the Autonomous Farm Agent Service in background thread
+    run_agent = os.getenv("RUN_AGENT", "true").lower() in ("true", "1", "yes")
+    if run_agent:
+        logger.info("Booting FarmHub Autonomous AI Agent worker in FastAPI lifespan...")
+        try:
+            from agent.main import FarmAgentService
+            agent_service_instance = FarmAgentService(host=bridge.host, port=bridge.port)
+            agent_worker_thread = threading.Thread(
+                target=agent_service_instance.run,
+                name="FarmAgentWorkerThread",
+                daemon=True,
+            )
+            agent_worker_thread.start()
+            logger.info("FarmHub AI Agent worker successfully running.")
+        except Exception as e:
+            logger.error(f"Failed to start FarmAgentService in lifespan: {e}")
+
     yield
-    # Shutdown: Stop MQTT Bridge
+
+    # Shutdown: Stop Agent and MQTT Bridge
+    if agent_service_instance:
+        logger.info("Signaling background FarmHub Agent worker to shut down...")
+        agent_service_instance.running = False
     bridge.stop()
 
 
@@ -291,6 +329,142 @@ async def toggle_pause():
     bridge.latest_state["automation_paused"] = not bridge.latest_state["automation_paused"]
     state_str = "PAUSED" if bridge.latest_state["automation_paused"] else "ACTIVE"
     return {"status": "SUCCESS", "automation_paused": bridge.latest_state["automation_paused"], "message": f"Automation is now {state_str}."}
+
+
+@app.get("/api/groq-models")
+async def get_groq_models():
+    """Diagnostic endpoint to inspect active models enabled on Groq."""
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            r = client.get(
+                "https://api.groq.com/openai/v1/models",
+                headers={"Authorization": f"Bearer {config.groq_api_key}"},
+            )
+            data = r.json()
+            model_ids = [m["id"] for m in data.get("data", [])]
+            return {"status": r.status_code, "models": model_ids}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/evaluate-now")
+async def trigger_evaluate_now():
+    """Forces an immediate AI evaluation cycle with LLM + weather + guardrails."""
+    from agent.weather import WeatherClient
+    from agent.llm_client import LLMClient
+    from agent.guardrails import GuardrailEngine
+
+    weather = WeatherClient().get_forecast()
+    llm = LLMClient()
+    guardrails = GuardrailEngine()
+
+    moisture = float(bridge.latest_state.get("moisture_pct", 30.0))
+    drum = str(bridge.latest_state.get("drum_level", "OK"))
+    history = bridge.db.get_recent_readings(hours=12)
+
+    last_pump_event = bridge.db.get_last_pump_event()
+    last_pump_time = None
+    if last_pump_event:
+        try:
+            last_pump_time = datetime.strptime(last_pump_event["timestamp"], "%Y-%m-%d %H:%M:%S")
+        except Exception:
+            pass
+    waterings_24h = bridge.db.get_waterings_in_last_24h()
+
+    decision = llm.decide(
+        current_moisture_pct=moisture,
+        drum_level=drum,
+        weather=weather,
+        recent_history=history,
+    )
+
+    battery = float(bridge.latest_state.get("battery_v", 12.0) or 12.0)
+    raw_adc = int(bridge.latest_state.get("raw_adc", 2000) or 2000)
+    consecutive_failures = bridge.db.get_consecutive_anomalies()
+
+    verdict = guardrails.evaluate(
+        proposed_action=decision.action,
+        proposed_duration_sec=decision.duration_sec,
+        current_moisture_pct=moisture,
+        drum_level=drum,
+        weather=weather,
+        last_pump_time=last_pump_time,
+        waterings_in_last_24h=waterings_24h,
+        battery_v=battery,
+        raw_adc=raw_adc,
+        consecutive_verification_failures=consecutive_failures,
+    )
+
+    bridge.db.record_decision(
+        action=verdict.final_action,
+        proposed_duration=decision.duration_sec,
+        approved_duration=verdict.final_duration_sec,
+        reasoning=f"AI: {decision.reasoning} | Policy: {verdict.reason}",
+        guardrail_verdict=verdict.verdict_type,
+        weather_summary=f"{weather.description}, {weather.temp_c}C",
+        model_used=decision.model_name,
+    )
+
+    if verdict.final_action == "WATER" and verdict.approved:
+        bridge.send_pump_command("RUN", verdict.final_duration_sec, verdict.reason)
+
+    return {
+        "status": "SUCCESS",
+        "action": verdict.final_action,
+        "duration_sec": verdict.final_duration_sec,
+        "engine": decision.model_name,
+        "reasoning": decision.reasoning,
+        "guardrail_verdict": verdict.verdict_type,
+    }
+
+
+class ChatRequest(BaseModel):
+    message: str
+    history: Optional[List[Dict[str, str]]] = None
+
+
+@app.post("/api/chat")
+async def chat_with_farmhub(request: ChatRequest):
+    """Conversational endpoint for the dashboard AI chatbot."""
+    from agent.chat_client import FarmChatAgent
+    from agent.weather import WeatherClient
+
+    if not request.message or not request.message.strip():
+        raise HTTPException(status_code=400, detail="Message cannot be empty.")
+
+    chat_agent = FarmChatAgent()
+    try:
+        weather = WeatherClient().get_forecast()
+    except Exception:
+        weather = None
+
+    decisions = bridge.db.get_recent_decisions(limit=5)
+    waterings_24h = bridge.db.get_waterings_in_last_24h()
+
+    # Prefer live telemetry from bridge, fallback to db latest if available
+    telemetry = dict(bridge.latest_state)
+    if telemetry.get("moisture_pct", 0) == 0:
+        latest_db = bridge.db.get_latest_reading()
+        if latest_db:
+            telemetry["moisture_pct"] = float(latest_db.get("moisture_pct", 0.0))
+            telemetry["raw_adc"] = latest_db.get("raw_adc", telemetry.get("raw_adc", 0))
+            telemetry["drum_level"] = latest_db.get("drum_level", telemetry.get("drum_level", "OK"))
+            telemetry["battery_v"] = float(latest_db.get("battery_v", 12.2) or 12.2)
+
+    reply = chat_agent.chat(
+        user_message=request.message.strip(),
+        conversation_history=request.history or [],
+        telemetry=telemetry,
+        weather=weather,
+        decisions=decisions,
+        waterings_24h=waterings_24h,
+    )
+
+    return {
+        "reply": reply,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "location": config.location_name,
+    }
 
 
 if __name__ == "__main__":

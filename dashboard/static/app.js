@@ -154,10 +154,32 @@ async function loadDecisions() {
       const d = data.decisions[0];
       aiActionTag.textContent = d.action;
       aiActionTag.className = `ai-decision-tag ${d.action}`;
-      aiReasoningText.textContent = d.reasoning;
+      aiReasoningText.textContent = `${d.reasoning} (${d.model_used || "AI"})`;
     }
   } catch (e) {
     console.error("Failed to load decisions:", e);
+  }
+}
+
+// Resilient HTTP Polling Fallback (ensures dashboard stays live even if WebSockets are blocked by proxies)
+async function pollStatus() {
+  try {
+    const res = await fetch("/api/status");
+    if (res.ok) {
+      const data = await res.json();
+      if (data.live) {
+        updateUI(data.live);
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+          connectionBadge.className = "connection-badge connected";
+          connectionText.textContent = "Live";
+        }
+      }
+    }
+  } catch (e) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      connectionBadge.className = "connection-badge disconnected";
+      connectionText.textContent = "Offline";
+    }
   }
 }
 
@@ -166,56 +188,59 @@ function connectWebSocket() {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   const wsUrl = `${protocol}//${window.location.host}/ws`;
 
-  ws = new WebSocket(wsUrl);
+  try {
+    ws = new WebSocket(wsUrl);
 
-  ws.onopen = () => {
-    connectionBadge.className = "connection-badge connected";
-    connectionText.textContent = "Live";
-  };
+    ws.onopen = () => {
+      connectionBadge.className = "connection-badge connected";
+      connectionText.textContent = "Live";
+    };
 
-  ws.onclose = () => {
-    connectionBadge.className = "connection-badge disconnected";
-    connectionText.textContent = "Reconnecting...";
-    setTimeout(connectWebSocket, 3000);
-  };
+    ws.onclose = () => {
+      // Don't show disconnected if HTTP polling is working; polling keeps it updated
+      setTimeout(connectWebSocket, 5000);
+    };
 
-  ws.onerror = () => {
-    ws.close();
-  };
+    ws.onerror = () => {
+      ws.close();
+    };
 
-  ws.onmessage = (event) => {
-    try {
-      const msg = JSON.parse(event.data);
-      if (msg.event === "INITIAL_SNAPSHOT" && msg.state) {
-        updateUI(msg.state);
-      } else if (msg.event === "FIELD_UPDATE") {
-        if (msg.state) updateUI(msg.state);
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.event === "INITIAL_SNAPSHOT" && msg.state) {
+          updateUI(msg.state);
+        } else if (msg.event === "FIELD_UPDATE") {
+          if (msg.state) updateUI(msg.state);
 
-        // Append live moisture to chart
-        if (msg.topic === "farm/soil/moisture" && chart) {
-          const nowStr = new Date().toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          });
-          chart.data.labels.push(nowStr);
-          chart.data.datasets[0].data.push(msg.data.moisture_pct);
-          if (chart.data.labels.length > 25) {
-            chart.data.labels.shift();
-            chart.data.datasets[0].data.shift();
+          // Append live moisture to chart
+          if (msg.topic === "farm/soil/moisture" && chart) {
+            const nowStr = new Date().toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            });
+            chart.data.labels.push(nowStr);
+            chart.data.datasets[0].data.push(msg.data.moisture_pct);
+            if (chart.data.labels.length > 25) {
+              chart.data.labels.shift();
+              chart.data.datasets[0].data.shift();
+            }
+            chart.update();
           }
-          chart.update();
-        }
 
-        // Live alert notification
-        if (msg.topic === "farm/alert") {
-          alertBanner.classList.add("visible");
-          alertMessage.textContent = msg.data.message || "Alert received.";
+          // Live alert notification
+          if (msg.topic === "farm/alert") {
+            alertBanner.classList.add("visible");
+            alertMessage.textContent = msg.data.message || "Alert received.";
+          }
         }
+      } catch (e) {
+        console.error("WebSocket message parsing error:", e);
       }
-    } catch (e) {
-      console.error("WebSocket message parsing error:", e);
-    }
-  };
+    };
+  } catch (e) {
+    console.warn("WebSocket init error, relying on HTTP polling:", e);
+  }
 }
 
 // Button Listeners
@@ -267,7 +292,169 @@ window.addEventListener("DOMContentLoaded", () => {
   connectWebSocket();
   loadHistory();
   loadDecisions();
+  initChat();
 
-  setInterval(loadDecisions, 15000);
+  setInterval(pollStatus, 3000);
+  setInterval(loadDecisions, 10000);
 });
+
+// ============================================================================
+// FarmHub Agronomist AI Chatbot Client
+// ============================================================================
+const chatFloatingBtn = document.getElementById("chatFloatingBtn");
+const chatDrawer = document.getElementById("chatDrawer");
+const chatBackdrop = document.getElementById("chatBackdrop");
+const chatCloseBtn = document.getElementById("chatCloseBtn");
+const chatMessages = document.getElementById("chatMessages");
+const chatForm = document.getElementById("chatForm");
+const chatInput = document.getElementById("chatInput");
+const chatSendBtn = document.getElementById("chatSendBtn");
+const chatChips = document.querySelectorAll(".chat-chip");
+
+let chatHistory = [];
+
+function openChatDrawer() {
+  if (!chatDrawer) return;
+  chatDrawer.classList.add("open");
+  if (chatBackdrop) chatBackdrop.classList.add("active");
+  if (chatMessages && chatMessages.children.length === 0) {
+    appendBotMessage(
+      "Hello Ajay! 🌱 I'm your **FarmHub Agronomist AI**.\n\n" +
+      "I continuously monitor your 5 tomato plants, soil moisture levels, and local weather in Ghaziabad.\n\n" +
+      "Feel free to ask about your plant health, recent irrigation decisions, or tomato care tips!"
+    );
+  }
+  if (chatInput) setTimeout(() => chatInput.focus(), 300);
+}
+
+function closeChatDrawer() {
+  if (chatDrawer) chatDrawer.classList.remove("open");
+  if (chatBackdrop) chatBackdrop.classList.remove("active");
+}
+
+function formatMessageText(text) {
+  let formatted = text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+  formatted = formatted.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+  formatted = formatted.replace(/`([^`]+)`/g, "<code>$1</code>");
+  formatted = formatted.replace(/(?:^|\n)[•\-\*]\s+(.+)/g, "<br>• $1");
+  formatted = formatted.replace(/\n\n/g, "</p><p>").replace(/\n/g, "<br>");
+  return `<p>${formatted}</p>`;
+}
+
+function appendUserMessage(text) {
+  if (!chatMessages) return;
+  const msgEl = document.createElement("div");
+  msgEl.className = "chat-msg user";
+  const now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  msgEl.innerHTML = `
+    <div class="chat-bubble"><p>${text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p></div>
+    <span class="chat-time">${now}</span>
+  `;
+  chatMessages.appendChild(msgEl);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function appendBotMessage(text) {
+  if (!chatMessages) return;
+  const msgEl = document.createElement("div");
+  msgEl.className = "chat-msg assistant";
+  const now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  msgEl.innerHTML = `
+    <div class="chat-bubble">${formatMessageText(text)}</div>
+    <span class="chat-time">${now}</span>
+  `;
+  chatMessages.appendChild(msgEl);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function showTypingIndicator() {
+  if (!chatMessages) return;
+  const typingEl = document.createElement("div");
+  typingEl.id = "chatTypingIndicator";
+  typingEl.className = "chat-typing";
+  typingEl.innerHTML = `
+    <div class="typing-dot"></div>
+    <div class="typing-dot"></div>
+    <div class="typing-dot"></div>
+  `;
+  chatMessages.appendChild(typingEl);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function removeTypingIndicator() {
+  const typingEl = document.getElementById("chatTypingIndicator");
+  if (typingEl) typingEl.remove();
+}
+
+async function handleSendMessage(messageText) {
+  const text = (messageText || "").trim();
+  if (!text) return;
+
+  appendUserMessage(text);
+  if (chatInput) chatInput.value = "";
+  if (chatSendBtn) chatSendBtn.disabled = true;
+  showTypingIndicator();
+
+  try {
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: text,
+        history: chatHistory.slice(-6),
+      }),
+    });
+
+    removeTypingIndicator();
+
+    if (res.ok) {
+      const data = await res.json();
+      appendBotMessage(data.reply);
+      chatHistory.push({ role: "user", content: text });
+      chatHistory.push({ role: "assistant", content: data.reply });
+    } else {
+      const err = await res.json().catch(() => ({}));
+      appendBotMessage("⚠️ " + (err.detail || "Sorry, I could not process your message right now. Please try again."));
+    }
+  } catch (err) {
+    removeTypingIndicator();
+    appendBotMessage("⚠️ Network error communicating with FarmHub AI.");
+  } finally {
+    if (chatSendBtn) chatSendBtn.disabled = false;
+    if (chatInput) chatInput.focus();
+  }
+}
+
+function initChat() {
+  if (chatFloatingBtn) chatFloatingBtn.addEventListener("click", openChatDrawer);
+  if (chatCloseBtn) chatCloseBtn.addEventListener("click", closeChatDrawer);
+  if (chatBackdrop) chatBackdrop.addEventListener("click", closeChatDrawer);
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && chatDrawer && chatDrawer.classList.contains("open")) {
+      closeChatDrawer();
+    }
+  });
+
+  if (chatForm) {
+    chatForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      if (chatInput) handleSendMessage(chatInput.value);
+    });
+  }
+
+  chatChips.forEach((chip) => {
+    chip.addEventListener("click", () => {
+      const prompt = chip.getAttribute("data-prompt");
+      if (prompt) {
+        handleSendMessage(prompt);
+      }
+    });
+  });
+}
+
 

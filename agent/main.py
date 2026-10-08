@@ -168,6 +168,7 @@ class FarmAgentService:
                 pass
 
         waterings_24h = self.db.get_waterings_in_last_24h()
+        consecutive_failures = self.db.get_consecutive_anomalies()
 
         # 3. Ask AI LLM for decision
         ai_proposal = self.llm_client.decide(
@@ -188,6 +189,9 @@ class FarmAgentService:
             weather=weather,
             last_pump_time=last_pump_time,
             waterings_in_last_24h=waterings_24h,
+            battery_v=self.latest_battery_v,
+            raw_adc=getattr(self, "latest_raw_adc", None),
+            consecutive_verification_failures=consecutive_failures,
         )
         logger.info(f"Guardrail Verdict: {verdict.verdict_type} -> Final Action: {verdict.final_action} ({verdict.final_duration_sec}s)")
         logger.info(f"Guardrail Note: {verdict.reason}")

@@ -37,6 +37,9 @@ class GuardrailEngine:
         weather: WeatherReport,
         last_pump_time: Optional[datetime],
         waterings_in_last_24h: int,
+        battery_v: Optional[float] = None,
+        raw_adc: Optional[int] = None,
+        consecutive_verification_failures: int = 0,
     ) -> GuardrailResult:
         """Evaluates an AI proposal against all hard-coded safety constraints."""
 
@@ -123,6 +126,47 @@ class GuardrailEngine:
                 final_action="SKIP",
                 final_duration_sec=0,
                 reason=f"BLOCKED: Rain expected in next 3h ({weather.rain_probability_pct}% chance). Soil not critically dry ({current_moisture_pct}%).",
+                verdict_type="BLOCKED",
+            )
+
+        # ----------------------------------------------------------------------
+        # RULE 6: BATTERY LOW VOLTAGE CUTOFF (Li-ion 3S protection)
+        # ----------------------------------------------------------------------
+        if battery_v is not None and battery_v < 11.0:
+            logger.warning(f"GUARDRAIL VETO: Battery voltage critically low ({battery_v:.1f}V < 11.0V).")
+            return GuardrailResult(
+                approved=False,
+                final_action="SKIP",
+                final_duration_sec=0,
+                reason=f"BLOCKED: Battery voltage critically low ({battery_v:.1f}V < 11.0V). Pump locked to prevent brownout and battery damage.",
+                verdict_type="BLOCKED",
+            )
+
+        # ----------------------------------------------------------------------
+        # RULE 7: SENSOR HARDWARE FAULT BOUNDS (Unplugged or Short-circuit)
+        # ----------------------------------------------------------------------
+        if raw_adc is not None and (raw_adc < 500 or raw_adc > 3600):
+            logger.warning(f"GUARDRAIL VETO: Raw ADC ({raw_adc}) out of physical bounds (500-3600).")
+            return GuardrailResult(
+                approved=False,
+                final_action="SKIP",
+                final_duration_sec=0,
+                reason=f"BLOCKED: Soil sensor raw ADC ({raw_adc}) is out of physical range (500-3600). Sensor fault or wire disconnection suspected.",
+                verdict_type="BLOCKED",
+            )
+
+        # ----------------------------------------------------------------------
+        # RULE 8: CONSECUTIVE VERIFICATION ANOMALIES (Burst Pipe Lockout)
+        # ----------------------------------------------------------------------
+        if consecutive_verification_failures >= 2:
+            logger.warning(
+                f"GUARDRAIL VETO: {consecutive_verification_failures} consecutive irrigation cycles failed moisture verification."
+            )
+            return GuardrailResult(
+                approved=False,
+                final_action="SKIP",
+                final_duration_sec=0,
+                reason=f"BLOCKED: {consecutive_verification_failures} consecutive waterings failed moisture verification. Suspected pipe disconnect, clog, or leak.",
                 verdict_type="BLOCKED",
             )
 
