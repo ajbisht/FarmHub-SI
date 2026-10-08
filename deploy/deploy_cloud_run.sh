@@ -43,7 +43,9 @@ gcloud run deploy "${SERVICE_NAME}" \
     --max-instances 2 \
     --memory 512Mi \
     --cpu 1 \
-    --set-env-vars "${ENV_VARS}"
+    --set-env-vars "${ENV_VARS}" \
+    --add-volume name=farmhub-storage,type=cloud-storage,bucket=farmhub-data-gen-lang-client-0955914425 \
+    --add-volume-mount volume=farmhub-storage,mount-path=/mnt/data
 
 SERVICE_URL=$(gcloud run services describe "${SERVICE_NAME}" --region "${REGION}" --format="value(status.url)")
 echo "================================================================="

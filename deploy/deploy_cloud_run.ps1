@@ -67,7 +67,9 @@ Write-Host "Submitting build and deploying to Cloud Run..." -ForegroundColor Gre
     --max-instances 2 `
     --memory 512Mi `
     --cpu 1 `
-    --set-env-vars $EnvVars
+    --set-env-vars $EnvVars `
+    "--add-volume=name=farmhub-storage,type=cloud-storage,bucket=farmhub-data-gen-lang-client-0955914425" `
+    "--add-volume-mount=volume=farmhub-storage,mount-path=/mnt/data"
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host ""

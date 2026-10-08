@@ -204,6 +204,8 @@ class DashboardMQTTBridge:
         self.client.disconnect()
 
 
+from agent.storage_sync import storage_sync
+
 bridge = DashboardMQTTBridge(host=config.mqtt_host, port=config.mqtt_port)
 agent_service_instance = None
 agent_worker_thread = None
@@ -212,9 +214,15 @@ agent_worker_thread = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global agent_service_instance, agent_worker_thread
+    # Restore persistent database snapshot from GCS mount if available
+    storage_sync.restore_from_gcs()
+
     # Startup: Capture the main event loop and start MQTT Bridge
     bridge.loop = asyncio.get_running_loop()
     bridge.start()
+
+    # Start periodic GCS synchronization worker (every 2 minutes)
+    storage_sync.start_periodic_sync(interval_sec=120)
 
     # Boot the Autonomous Farm Agent Service in background thread
     run_agent = os.getenv("RUN_AGENT", "true").lower() in ("true", "1", "yes")
@@ -235,10 +243,11 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # Shutdown: Stop Agent and MQTT Bridge
+    # Shutdown: Stop Agent, flush GCS sync, and stop MQTT Bridge
     if agent_service_instance:
         logger.info("Signaling background FarmHub Agent worker to shut down...")
         agent_service_instance.running = False
+    storage_sync.stop_sync()
     bridge.stop()
 
 
