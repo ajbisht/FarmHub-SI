@@ -202,7 +202,7 @@ class FarmAgentService:
             action=verdict.final_action,
             proposed_duration=ai_proposal.duration_sec,
             approved_duration=verdict.final_duration_sec,
-            reasoning=f"AI: {ai_proposal.reasoning} | Policy: {verdict.reason}",
+            reasoning=(ai_proposal.reasoning if verdict.approved else verdict.reason),
             guardrail_verdict=verdict.verdict_type,
             weather_summary=weather_summary,
             model_used=ai_proposal.model_name,

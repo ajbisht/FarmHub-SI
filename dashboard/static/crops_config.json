@@ -1,0 +1,67 @@
+{
+  "default_preset": "tomatoes",
+  "presets": {
+    "tomatoes": {
+      "id": "tomatoes",
+      "title": "Himalayan Terrace Tomatoes",
+      "badge": "5 Plants",
+      "icon": "🍅",
+      "description": "5-Plant High-Altitude Drip Pilot in Polyhouse Bed",
+      "target_moisture_min": 25,
+      "target_moisture_max": 55,
+      "plants": [
+        { "id": "p1", "name": "Cherokee Purple", "variety": "Heirloom Beefsteak", "icon": "🍅", "moisture_offset": -0.6 },
+        { "id": "p2", "name": "Roma Plum", "variety": "Paste / Sauce", "icon": "🍅", "moisture_offset": 0.4 },
+        { "id": "p3", "name": "San Marzano", "variety": "Italian Plum", "icon": "🍅", "moisture_offset": 1.8 },
+        { "id": "p4", "name": "Beefsteak Heritage", "variety": "Large Red", "icon": "🍅", "moisture_offset": -1.2 },
+        { "id": "p5", "name": "Cherry Sweet", "variety": "Saladette Cluster", "icon": "🍅", "moisture_offset": 0.2 }
+      ]
+    },
+    "avocado": {
+      "id": "avocado",
+      "title": "Highland Avocado Trees",
+      "badge": "4 Trees",
+      "icon": "🥑",
+      "description": "Sub-Himalayan Cold-Tolerant Hass & Fuerte Orchard",
+      "target_moisture_min": 28,
+      "target_moisture_max": 60,
+      "plants": [
+        { "id": "p1", "name": "Hass Graft Tree #1", "variety": "Dwarf Perennial", "icon": "🥑", "moisture_offset": -0.8 },
+        { "id": "p2", "name": "Hass Graft Tree #2", "variety": "Dwarf Perennial", "icon": "🥑", "moisture_offset": 0.5 },
+        { "id": "p3", "name": "Fuerte Type A #3", "variety": "Cold-Hardy Valley", "icon": "🥑", "moisture_offset": 1.4 },
+        { "id": "p4", "name": "Fuerte Type B #4", "variety": "Cold-Hardy Valley", "icon": "🥑", "moisture_offset": -0.3 }
+      ]
+    },
+    "lime": {
+      "id": "lime",
+      "title": "Kagzi Lime Bio-Fence",
+      "badge": "6 Bushes",
+      "icon": "🍋",
+      "description": "Terrace Perimeter Monkey-Proof Citrus Border",
+      "target_moisture_min": 20,
+      "target_moisture_max": 50,
+      "plants": [
+        { "id": "p1", "name": "North Lime Bush #1", "variety": "Citrus aurantifolia", "icon": "🍋", "moisture_offset": -0.5 },
+        { "id": "p2", "name": "North Lime Bush #2", "variety": "Citrus aurantifolia", "icon": "🍋", "moisture_offset": 0.3 },
+        { "id": "p3", "name": "Mid-Terrace Bush #3", "variety": "Citrus aurantifolia", "icon": "🍋", "moisture_offset": 0.9 },
+        { "id": "p4", "name": "South Lime Bush #4", "variety": "Citrus aurantifolia", "icon": "🍋", "moisture_offset": -1.0 },
+        { "id": "p5", "name": "South Lime Bush #5", "variety": "Citrus aurantifolia", "icon": "🍋", "moisture_offset": 0.4 },
+        { "id": "p6", "name": "Gate Perimeter Bush #6", "variety": "Citrus aurantifolia", "icon": "🍋", "moisture_offset": 0.1 }
+      ]
+    },
+    "turmeric": {
+      "id": "turmeric",
+      "title": "Black Turmeric Raised Beds",
+      "badge": "3 Beds",
+      "icon": "🌿",
+      "description": "Wild-Boar Proof High-Value Himalayan Curcuma caesia",
+      "target_moisture_min": 35,
+      "target_moisture_max": 65,
+      "plants": [
+        { "id": "p1", "name": "Terrace Bed A (Shade)", "variety": "Medicinal Rhizome", "icon": "🌿", "moisture_offset": 0.0 },
+        { "id": "p2", "name": "Terrace Bed B (Center)", "variety": "Medicinal Rhizome", "icon": "🌿", "moisture_offset": 1.2 },
+        { "id": "p3", "name": "Terrace Bed C (Stream-Side)", "variety": "Medicinal Rhizome", "icon": "🌿", "moisture_offset": -0.7 }
+      ]
+    }
+  }
+}

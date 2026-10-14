@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0b1120">
+  <title>FarmHub Autonomous Irrigation</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/app.css">
+  <!-- Chart.js for lightweight live trend graph -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <div class="dashboard-container">
+
+    <!-- Header -->
+    <header class="header-card">
+      <div class="brand">
+        <span class="brand-icon">🍅</span>
+        <div>
+          <h1 class="brand-title">FarmHub Irrigation</h1>
+          <p class="brand-subtitle">5 Tomato Plants • Closed-Loop POC</p>
+        </div>
+      </div>
+      <div id="connectionBadge" class="connection-badge disconnected">
+        <span class="status-dot"></span>
+        <span id="connectionText">Connecting...</span>
+      </div>
+    </header>
+
+    <!-- Alert Banner (Appears on Drum LOW or Sensor Anomaly) -->
+    <div id="alertBanner" class="alert-banner">
+      <span>⚠️</span>
+      <span id="alertMessage">Critical: Drum level is LOW!</span>
+    </div>
+
+    <!-- Live Moisture & Reservoir Gauge -->
+    <main class="gauge-card">
+      <div class="gauge-wrapper">
+        <svg class="gauge-svg" viewBox="0 0 200 200">
+          <circle class="gauge-bg" cx="100" cy="100" r="90" />
+          <circle id="gaugeProgress" class="gauge-progress" cx="100" cy="100" r="90" />
+        </svg>
+        <div class="gauge-center">
+          <div>
+            <span id="moistureValue" class="gauge-val">--</span>
+            <span class="gauge-unit">%</span>
+          </div>
+          <span class="gauge-label">Soil Moisture</span>
+        </div>
+      </div>
+
+      <!-- Quick Metrics Grid -->
+      <div class="metrics-grid">
+        <div class="metric-pill">
+          <span class="metric-pill-title">Drum Reservoir</span>
+          <span id="drumBadge" class="metric-pill-value" style="color: #10b981;">
+            💧 <span id="drumValue">OK</span>
+          </span>
+        </div>
+        <div class="metric-pill">
+          <span class="metric-pill-title">Pump Actuator</span>
+          <span id="pumpBadge" class="metric-pill-value" style="color: #94a3b8;">
+            ⚙️ <span id="pumpValue">IDLE</span>
+          </span>
+        </div>
+        <div class="metric-pill">
+          <span class="metric-pill-title">Field Battery</span>
+          <span class="metric-pill-value">
+            🔋 <span id="batteryValue">12.2V</span>
+          </span>
+        </div>
+        <div class="metric-pill">
+          <span class="metric-pill-title">Raw ADC</span>
+          <span class="metric-pill-value">
+            📡 <span id="adcValue">--</span>
+          </span>
+        </div>
+      </div>
+    </main>
+
+    <!-- Manual Overrides -->
+    <section class="controls-card">
+      <h2 class="card-heading">Manual Controls</h2>
+      <div class="button-row">
+        <button id="btnWater" class="btn btn-water">
+          💧 Water 30s Now
+        </button>
+        <button id="btnStop" class="btn btn-stop">
+          🛑 Stop
+        </button>
+      </div>
+    </section>
+
+    <!-- AI Intelligence & Reasoning -->
+    <section class="ai-card">
+      <div class="ai-header">
+        <h2 class="card-heading">AI Reasoning</h2>
+        <span id="aiActionTag" class="ai-decision-tag SKIP">--</span>
+      </div>
+      <div class="ai-reasoning-box">
+        <p id="aiReasoningText">Waiting for next autonomous sense & decision cycle...</p>
+      </div>
+    </section>
+
+    <!-- 24-Hour Trend Chart -->
+    <section class="chart-card">
+      <h2 class="card-heading">Moisture Trend (24h)</h2>
+      <div class="chart-wrapper">
+        <canvas id="moistureChart"></canvas>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- Floating Chatbot Action Button -->
+  <button id="chatFloatingBtn" class="chat-floating-btn" aria-label="Chat with FarmHub AI">
+    <span class="chat-btn-pulse"></span>
+    <span class="chat-btn-icon">💬</span>
+    <span class="chat-btn-label">Ask FarmHub AI</span>
+  </button>
+
+  <!-- Slide-over / Slide-up Chat Drawer -->
+  <div id="chatDrawer" class="chat-drawer" role="dialog" aria-modal="true" aria-labelledby="chatTitle">
+    <div class="chat-drawer-header">
+      <div class="chat-title-group">
+        <div class="chat-avatar">🌱</div>
+        <div>
+          <h3 id="chatTitle" class="chat-title">FarmHub Agronomist</h3>
+          <p class="chat-status"><span class="chat-status-dot"></span> Live Telemetry Context</p>
+        </div>
+      </div>
+      <button id="chatCloseBtn" class="chat-close-btn" aria-label="Close Chat">✕</button>
+    </div>
+
+    <!-- Scrollable Message Log -->
+    <div id="chatMessages" class="chat-messages">
+      <!-- Populated dynamically by app.js -->
+    </div>
+
+    <!-- Quick Prompt Chips -->
+    <div class="chat-chips-scroll">
+      <button class="chat-chip" data-prompt="How are my tomato plants doing right now?">🌱 Plant Health</button>
+      <button class="chat-chip" data-prompt="Why did you make the last watering decision?">💧 Last Decision</button>
+      <button class="chat-chip" data-prompt="What is the weather forecast and rain chance?">🌤️ Weather & Rain</button>
+      <button class="chat-chip" data-prompt="What is the current drum reservoir and battery level?">🔋 Battery & Drum</button>
+    </div>
+
+    <!-- Input Box -->
+    <form id="chatForm" class="chat-form">
+      <input type="text" id="chatInput" class="chat-input" placeholder="Ask about soil, irrigation, weather..." autocomplete="off" />
+      <button type="submit" id="chatSendBtn" class="chat-send-btn" aria-label="Send message">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="22" y1="2" x2="11" y2="13"></line>
+          <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+        </svg>
+      </button>
+    </form>
+  </div>
+
+  <!-- Chat Drawer Backdrop Overlay -->
+  <div id="chatBackdrop" class="chat-backdrop"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

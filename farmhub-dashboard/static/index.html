@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0d1117">
+  <title>FarmHub Mission Control | Autonomous Drip Irrigation</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+
+  <div class="app-shell">
+
+    <!-- Top Navigation & Operations Ribbon -->
+    <header class="top-navbar">
+      <div class="nav-brand">
+        <div class="brand-badge-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2a10 10 0 0 1 10 10c0 5.523-4.477 10-10 10S2 17.523 2 12a10 10 0 0 1 10-10z"></path>
+            <path d="M12 6v6l4 2"></path>
+            <path d="M7 16.5c1.5-1 3.5-1 5 0 1.5-1 3.5-1 5 0"></path>
+          </svg>
+        </div>
+        <div class="brand-text-group">
+          <div class="brand-title-row">
+            <h1 class="brand-title">FarmHub Command Deck</h1>
+            <span class="pilot-badge" id="activeCropBadge">TERRACE DRIP • 5 TOMATOES</span>
+          </div>
+          <p class="brand-subtitle">Smart Soil Monitoring &amp; Automated Drip Irrigation</p>
+        </div>
+      </div>
+
+      <!-- Mode Switcher -->
+      <div class="mode-switcher-container">
+        <div class="mode-switcher" id="modeSwitcher">
+          <button class="mode-btn active" data-mode="AUTO" id="modeAutoBtn">
+            <span class="mode-dot"></span>
+            🤖 Autonomous AI
+          </button>
+          <button class="mode-btn" data-mode="SCHEDULED" id="modeSchedBtn">
+            ⏱️ Scheduled
+          </button>
+          <button class="mode-btn" data-mode="MANUAL" id="modeManualBtn">
+            ✋ Manual
+          </button>
+        </div>
+      </div>
+
+      <!-- Live Heartbeat & Telemetry HUD -->
+      <div class="nav-hud">
+        <div class="hud-pill" id="batteryHudPill" title="12V Li-ion Battery Status">
+          <svg class="hud-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="7" width="16" height="10" rx="2" ry="2"></rect>
+            <line x1="20" y1="11" x2="20" y2="13"></line>
+          </svg>
+          <span id="navBatteryVal" class="hud-mono">12.3V</span>
+          <span class="hud-sub" id="navBatteryPct">86% Healthy</span>
+        </div>
+
+        <div class="hud-pill" id="connectionHudPill" title="Connection status with field sensors">
+          <span class="live-beacon"></span>
+          <span id="connectionText">Connected Live</span>
+        </div>
+
+        <button id="btnTogglePause" class="action-hud-btn" title="Pause or Resume Automated Irrigation">
+          <span id="pauseIcon">⏸</span>
+          <span id="pauseText">Pause Auto</span>
+        </button>
+
+        <button id="btnEvaluateNow" class="action-hud-btn eval-btn" title="Ask AI to evaluate soil & weather right now">
+          ⚡ Check Now
+        </button>
+      </div>
+    </header>
+
+    <!-- Crop Selector Bar -->
+    <section class="crop-bar">
+      <div class="crop-bar-label">
+        <span class="crop-icon">🌱</span>
+        <span class="crop-bar-title">Monitored Crop:</span>
+      </div>
+      <div class="crop-pills-list" id="cropPillsList">
+        <button class="crop-tab-btn active" data-preset="tomatoes">
+          <span class="crop-tab-icon">🍅</span>
+          <span class="crop-tab-name">5 Tomatoes (Pilot)</span>
+        </button>
+        <button class="crop-tab-btn" data-preset="avocado">
+          <span class="crop-tab-icon">🥑</span>
+          <span class="crop-tab-name">4 Avocados</span>
+        </button>
+        <button class="crop-tab-btn" data-preset="lime">
+          <span class="crop-tab-icon">🍋</span>
+          <span class="crop-tab-name">6 Kagzi Limes</span>
+        </button>
+        <button class="crop-tab-btn" data-preset="turmeric">
+          <span class="crop-tab-icon">🌿</span>
+          <span class="crop-tab-name">3 Turmeric Beds</span>
+        </button>
+      </div>
+      <button class="crop-config-btn" id="btnOpenConfigModal" title="Customize crop names, thresholds, or add plants via config">
+        ⚙️ Customize Crops
+      </button>
+    </section>
+
+    <!-- Critical Alert Banner -->
+    <div id="alertBanner" class="alert-banner">
+      <div class="alert-icon">⚠️</div>
+      <div class="alert-content">
+        <strong id="alertTitle">Water Tank Needs Attention</strong>
+        <span id="alertMessage">Water level in the tank is LOW. Pump is temporarily stopped to protect the motor from running dry.</span>
+      </div>
+      <button class="alert-dismiss" id="alertDismissBtn" aria-label="Dismiss Alert">✕</button>
+    </div>
+
+    <!-- Main Bento Grid -->
+    <main class="bento-grid">
+
+      <!-- ================= CARD 1: SOIL & ROOT ZONE INTELLIGENCE ================= -->
+      <section class="bento-card card-soil">
+        <div class="card-header">
+          <div class="card-title-group">
+            <span class="card-icon-pill icon-soil">🌱</span>
+            <div>
+              <h2 class="card-heading">Soil Moisture &amp; Root Health</h2>
+              <p class="card-subtext">Live moisture measurement from the plant root zone</p>
+            </div>
+          </div>
+          <span id="soilStatusBadge" class="status-pill pill-optimal">JUST RIGHT</span>
+        </div>
+
+        <div class="soil-hero-layout">
+          <!-- Precision Radial Gauge -->
+          <div class="radial-gauge-wrapper">
+            <div class="radial-gauge-container">
+              <svg class="radial-svg" viewBox="0 0 220 220">
+                <defs>
+                  <linearGradient id="moistureGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stop-color="#3fb950" />
+                    <stop offset="100%" stop-color="#2ea043" />
+                  </linearGradient>
+                </defs>
+                <circle class="radial-track" cx="110" cy="110" r="90" />
+                <circle id="radialProgress" class="radial-fill" cx="110" cy="110" r="90" />
+              </svg>
+              <div class="radial-content">
+                <div class="radial-digits">
+                  <span id="moistureValue" class="mono-huge">38.4</span>
+                  <span class="radial-pct">%</span>
+                </div>
+                <div class="radial-badge-wrap">
+                  <span id="moistureQuickBadge" class="radial-quick-badge badge-optimal">Just Right</span>
+                </div>
+              </div>
+            </div>
+            <!-- Clean descriptive caption outside/below the circle -->
+            <div class="radial-caption-block">
+              <span class="radial-caption-title">Main Root Sensor</span>
+              <span class="radial-caption-sub" id="moisturePlainEnglish">Soil has healthy water for roots</span>
+            </div>
+          </div>
+
+          <!-- Micro-Telemetry Stats in Plain English -->
+          <div class="soil-stats-col">
+            <div class="stat-box">
+              <div class="stat-header-row">
+                <span class="stat-title">Sensor Signal Quality</span>
+                <span class="helper-tooltip" title="Electronic raw count from sensor (0 = Dry Air, 4095 = Submerged in Water)">ℹ️</span>
+              </div>
+              <div class="stat-val-row">
+                <span id="adcValue" class="stat-mono">1842</span>
+                <span class="stat-dim">/ 4095</span>
+                <span class="stat-tag tag-good">Good Signal</span>
+              </div>
+              <div class="meter-bar-track">
+                <div id="adcBarFill" class="meter-bar-fill" style="width: 45%;"></div>
+              </div>
+              <span class="stat-sub">Capacitive probe reading clearly without electrical noise</span>
+            </div>
+
+            <div class="stat-box">
+              <span class="stat-title">Moisture Scale Guide</span>
+              <div class="range-legend">
+                <span class="range-tag wilting" title="Soil is dry, plants need water">🟡 Thirsty &lt;25%</span>
+                <span class="range-tag optimal" title="Ideal moisture, plants are happy">🟢 Just Right 25–55%</span>
+                <span class="range-tag saturated" title="Soil is very wet, no watering needed">🔵 Wet &gt;55%</span>
+              </div>
+            </div>
+
+            <div class="stat-box">
+              <span class="stat-title">Root Environment</span>
+              <div class="stat-val-row">
+                <span class="stat-mono">21.8°C</span>
+                <span class="stat-sub-label">Soil Temp</span>
+                <span class="stat-chip">Air Thirst: Mild &amp; Normal</span>
+              </div>
+              <span class="stat-sub">Water evaporates smoothly without stressing plant leaves</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Dynamic Plant Canopy Interactive Twin -->
+        <div class="canopy-twin-container">
+          <div class="canopy-header">
+            <div>
+              <span class="canopy-title" id="canopyTitle">Terrace Bed: 5 Tomato Plants</span>
+              <span class="canopy-sub" id="canopySub">Individual plant root moisture simulation</span>
+            </div>
+            <span class="canopy-legend" id="canopyCountBadge">5 Active Plants</span>
+          </div>
+          <!-- Plant grid dynamically built by app.js from crops_config.json -->
+          <div class="plant-grid" id="plantGridContainer"></div>
+        </div>
+      </section>
+
+      <!-- ================= CARD 2: WATER RESERVOIR & DRUM ================= -->
+      <section class="bento-card card-hydrology">
+        <div class="card-header">
+          <div class="card-title-group">
+            <span class="card-icon-pill icon-water">💧</span>
+            <div>
+              <h2 class="card-heading">Water Storage Tank</h2>
+              <p class="card-subtext">Water drum reserve &amp; safety float sensor</p>
+            </div>
+          </div>
+          <span id="drumBadge" class="status-pill pill-optimal">WATER FULL</span>
+        </div>
+
+        <div class="drum-visual-layout">
+          <!-- 3D Cross-Section Drum with Smooth Liquid Physics -->
+          <div class="drum-container">
+            <div class="drum-outer-barrel">
+              <div class="drum-top-rim"></div>
+              <div class="drum-level-indicator">
+                <span class="drum-mark">200L</span>
+                <span class="drum-mark">150L</span>
+                <span class="drum-mark">100L</span>
+                <span class="drum-mark">50L</span>
+              </div>
+              <div class="drum-fluid-wrapper" id="drumFluidWrapper" style="height: 82%;">
+                <svg class="liquid-wave" viewBox="0 0 500 150" preserveAspectRatio="none">
+                  <path d="M0,50 C150,120 350,0 500,60 L500,150 L0,150 Z" class="wave-layer wave-front"></path>
+                  <path d="M0,70 C150,20 350,110 500,40 L500,150 L0,150 Z" class="wave-layer wave-back"></path>
+                </svg>
+                <div class="drum-fluid-body"></div>
+              </div>
+            </div>
+            <div class="drum-metric-overlay">
+              <span id="drumLitersVal" class="drum-huge mono">164</span>
+              <span class="drum-unit">LITERS</span>
+              <span class="drum-pct-badge" id="drumPctBadge">82% Full</span>
+            </div>
+          </div>
+
+          <!-- Hydrology Info Metrics in Plain Terms -->
+          <div class="hydrology-stats-col">
+            <div class="stat-box">
+              <span class="stat-title">Tank Safety Float</span>
+              <div class="stat-val-row">
+                <span id="drumFloatState" class="stat-text-bold highlight-green">Plenty of Water</span>
+              </div>
+              <span class="stat-sub">Automatic safety lock: Pump is safe to turn on</span>
+            </div>
+
+            <div class="stat-box">
+              <span class="stat-title">Water Remaining</span>
+              <div class="stat-val-row">
+                <span class="stat-mono-large" id="autonomyDays">14</span>
+                <span class="stat-dim">Days Left</span>
+              </div>
+              <span class="stat-sub">Based on ~5.5 Liters daily watering needs</span>
+            </div>
+
+            <div class="stat-box">
+              <span class="stat-title">Stream Refill Line</span>
+              <div class="stat-val-row">
+                <span class="stat-text-bold highlight-blue">Mountain Stream Connected</span>
+              </div>
+              <span class="stat-sub">Natural gravity flow keeps tank refilling steadily</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= CARD 3: 12V PUMP ACTUATION & FLOW ================= -->
+      <section class="bento-card card-pump">
+        <div class="card-header">
+          <div class="card-title-group">
+            <span class="card-icon-pill icon-pump">⚡</span>
+            <div>
+              <h2 class="card-heading">Drip Watering Pump</h2>
+              <p class="card-subtext">12V Drip Pump status &amp; manual controls</p>
+            </div>
+          </div>
+          <span id="pumpBadge" class="status-pill pill-idle">PUMP RESTING</span>
+        </div>
+
+        <!-- Animated Flow Pipe -->
+        <div class="flow-pipe-container" id="flowPipeContainer">
+          <div class="flow-pipe-graphic">
+            <div class="pipe-flange flange-left"></div>
+            <div class="pipe-tube">
+              <div class="water-pulse-particles" id="pipePulse"></div>
+            </div>
+            <div class="pipe-flange flange-right"></div>
+          </div>
+          <div class="flow-pipe-status">
+            <span class="flow-rate-label">DRIP LINE:</span>
+            <span class="flow-rate-val mono" id="flowStatusLabel">Pump is Resting (Off)</span>
+          </div>
+        </div>
+
+        <!-- Actuator Command Buttons -->
+        <div class="controls-toolbar">
+          <button id="btnWater15" class="btn btn-pulse" data-sec="15" title="Run pump for 15 seconds">
+            💧 15s Light Drink
+          </button>
+          <button id="btnWater30" class="btn btn-pulse primary-pulse" data-sec="30" title="Run pump for 30 seconds">
+            💧 30s Normal Drink
+          </button>
+          <button id="btnWater60" class="btn btn-pulse" data-sec="60" title="Run pump for 60 seconds">
+            💧 60s Deep Soak
+          </button>
+          <button id="btnStop" class="btn btn-emergency" title="Stop pump immediately">
+            🛑 Stop Pump Now
+          </button>
+        </div>
+
+        <!-- Dosage & Conservation Audit -->
+        <div class="pump-metrics-grid">
+          <div class="mini-stat-card">
+            <span class="mini-title">Water Given Today</span>
+            <span class="mini-mono" id="waterDeliveredToday">4.5 Liters</span>
+          </div>
+          <div class="mini-stat-card">
+            <span class="mini-title">Times Watered Today</span>
+            <span class="mini-mono" id="cyclesToday">3 Times</span>
+          </div>
+          <div class="mini-stat-card">
+            <span class="mini-title">Delivery Status</span>
+            <span class="mini-mono highlight-green" id="deliveryStatusBadge">✔ Verified</span>
+            <span class="mini-sub" id="deliveryStatusSub">Soil delta healthy</span>
+          </div>
+          <div class="mini-stat-card">
+            <span class="mini-title">Water Conserved</span>
+            <span class="mini-mono highlight-green" id="waterConserved">72% Saved</span>
+            <span class="mini-sub">vs garden pipe hose</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= CARD 4: GEMINI AI BRAIN & REASONING ================= -->
+      <section class="bento-card card-ai">
+        <div class="card-header">
+          <div class="card-title-group">
+            <span class="card-icon-pill icon-ai">🧠</span>
+            <div>
+              <h2 class="card-heading">AI Farm Assistant (Gemini)</h2>
+              <p class="card-subtext">Automated reasoning based on soil &amp; mountain rain</p>
+            </div>
+          </div>
+          <span id="aiActionTag" class="status-pill pill-ai">WATCHING SOIL</span>
+        </div>
+
+        <!-- Live Reasoning Hero Box -->
+        <div class="ai-thought-box">
+          <div class="thought-header">
+            <div class="model-badge">
+              <span class="model-dot"></span>
+              <span id="aiModelName">Gemini 1.5 Flash</span>
+            </div>
+            <span class="thought-timestamp" id="aiTimestamp">Checked just now</span>
+          </div>
+          <p class="thought-narrative" id="aiReasoningText">
+            Soil moisture is healthy at 38%. The mountain skies are partly cloudy with only an 18% chance of rain. No watering needed right now. Will check again in 15 minutes.
+          </p>
+          <div class="guardrail-stamp">
+            <span class="stamp-icon">🛡️</span>
+            <span id="guardrailVerdict">Safety Rules Verified • Roots Safe from Overwatering</span>
+          </div>
+        </div>
+
+        <!-- Decision History Log in Plain English -->
+        <div class="decision-feed-container">
+          <span class="feed-title">Recent Automated Actions</span>
+          <div class="feed-list" id="decisionFeedList">
+            <div class="feed-item">
+              <span class="feed-action tag-skip">NO WATER</span>
+              <span class="feed-reason">Soil has plenty of water (41%). Rain expected later.</span>
+              <span class="feed-time">10:30 AM</span>
+            </div>
+            <div class="feed-item">
+              <span class="feed-action tag-water">WATERED</span>
+              <span class="feed-reason">Soil was getting dry (29%). Gave 30s morning drink.</span>
+              <span class="feed-time">06:15 AM</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= CARD 5: MOUNTAIN WEATHER & RAIN RADAR ================= -->
+      <section class="bento-card card-weather">
+        <div class="card-header">
+          <div class="card-title-group">
+            <span class="card-icon-pill icon-weather">🌦️</span>
+            <div>
+              <h2 class="card-heading">Mountain Weather &amp; Rain Forecast</h2>
+              <p class="card-subtext">Local Himalayan mountain terrace conditions</p>
+            </div>
+          </div>
+          <span class="status-pill pill-weather" id="weatherCondition">PARTLY CLOUDY</span>
+        </div>
+
+        <div class="weather-grid">
+          <div class="weather-main-tile">
+            <div class="temp-display">
+              <span class="temp-digits mono" id="weatherTemp">23.5</span>
+              <span class="temp-unit">°C</span>
+            </div>
+            <span class="weather-summary-text" id="weatherDesc">Mild &amp; clear terrace skies</span>
+          </div>
+
+          <div class="rain-radar-tile">
+            <div class="radar-title-row">
+              <span class="radar-title">Chance of Rain Today</span>
+              <span class="rain-threshold">Rain auto-skip at &gt;50%</span>
+            </div>
+            <div class="rain-gauge-bar">
+              <div class="rain-gauge-fill" id="rainGaugeFill" style="width: 18%;"></div>
+            </div>
+            <div class="rain-gauge-labels">
+              <span class="rain-pct-mono" id="rainPctLabel">18% Low Chance</span>
+              <span class="rain-safe-badge">Safe to Water</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="weather-metrics-row">
+          <div class="weather-pill">
+            <span class="w-label">Air Humidity</span>
+            <span class="w-val mono" id="weatherHumidity">58%</span>
+            <span class="w-sub">Comfortable</span>
+          </div>
+          <div class="weather-pill">
+            <span class="w-label">Wind Speed</span>
+            <span class="w-val mono" id="weatherWind">8 km/h</span>
+            <span class="w-sub">Gentle Breeze</span>
+          </div>
+          <div class="weather-pill">
+            <span class="w-label">Air Pressure</span>
+            <span class="w-val mono">1014 hPa</span>
+            <span class="w-sub">Stable</span>
+          </div>
+          <div class="weather-pill">
+            <span class="w-label">Sunlight</span>
+            <span class="w-val mono">Moderate</span>
+            <span class="w-sub">Good for Leaves</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= CARD 6: HARDWARE & POWER SUBSYSTEM ================= -->
+      <section class="bento-card card-hardware">
+        <div class="card-header">
+          <div class="card-title-group">
+            <span class="card-icon-pill icon-hardware">🔋</span>
+            <div>
+              <h2 class="card-heading">Battery &amp; Electronics Health</h2>
+              <p class="card-subtext">12V Battery Pack, 5V Step-Down &amp; Safety Circuit</p>
+            </div>
+          </div>
+          <span class="status-pill pill-optimal">POWER HEALTHY</span>
+        </div>
+
+        <div class="hardware-grid">
+          <!-- 12V Battery Pack Detail -->
+          <div class="hw-item">
+            <div class="hw-top">
+              <span class="hw-name">12V Li-ion Battery Pack</span>
+              <span class="hw-val mono" id="hwBatteryV">12.3V</span>
+            </div>
+            <div class="battery-cell-graphic">
+              <div class="b-cell active">Cell 1 • 4.1V</div>
+              <div class="b-cell active">Cell 2 • 4.1V</div>
+              <div class="b-cell active">Cell 3 • 4.1V</div>
+            </div>
+            <span class="hw-note">Battery is 86% full • Lasts ~7 days without sunshine</span>
+          </div>
+
+          <!-- LM2596 Buck Converter -->
+          <div class="hw-item">
+            <div class="hw-top">
+              <span class="hw-name">LM2596 Power Step-Down</span>
+              <span class="hw-val mono highlight-green">5.00V LOCKED</span>
+            </div>
+            <div class="hw-meter-row">
+              <div class="meter-bar-track">
+                <div class="meter-bar-fill fill-green" style="width: 100%;"></div>
+              </div>
+            </div>
+            <span class="hw-note">Calibrated by you with multimeter • Powers ESP32 safely</span>
+          </div>
+
+          <!-- PBROS In-Line Fuse & Flyback Diode -->
+          <div class="hw-item">
+            <div class="hw-top">
+              <span class="hw-name">5A Fuse &amp; Motor Protection Diode</span>
+              <span class="hw-val mono highlight-cyan">PROTECTED</span>
+            </div>
+            <div class="diode-fuse-chips">
+              <span class="chip-safe">✔ 5A Blade Fuse Active</span>
+              <span class="chip-safe">✔ 1N4007 Diode Ready</span>
+            </div>
+            <span class="hw-note">Prevents sparks and protects electronics when pump starts</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= CARD 7: TIME-SERIES ANALYTICS (24H) ================= -->
+      <section class="bento-card card-analytics">
+        <div class="card-header">
+          <div class="card-title-group">
+            <span class="card-icon-pill icon-analytics">📊</span>
+            <div>
+              <h2 class="card-heading">24-Hour Soil Moisture History</h2>
+              <p class="card-subtext">Track how moisture rises after each watering pulse</p>
+            </div>
+          </div>
+          <div class="chart-legend-group">
+            <span class="legend-dot dot-moisture"></span> Soil Moisture (%)
+            <span class="legend-dot dot-pulse"></span> Watering Times
+          </div>
+        </div>
+
+        <div class="analytics-chart-wrapper">
+          <canvas id="moistureChart"></canvas>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      <p>FarmHub Autonomous Irrigation Pilot • Engineered for Uttarakhand Terrace Agriculture • Powered by Google Cloud Run &amp; Gemini</p>
+    </footer>
+
+  </div>
+
+  <!-- Crop Configuration Modal -->
+  <div id="cropConfigModal" class="crop-modal-backdrop">
+    <div class="crop-modal-box">
+      <div class="crop-modal-header">
+        <div class="modal-title-group">
+          <span class="modal-icon">⚙️</span>
+          <div>
+            <h3>Crop &amp; Plant Customization</h3>
+            <p>Customize your crop varieties, plant count, and target moisture levels</p>
+          </div>
+        </div>
+        <button id="btnCloseModal" class="modal-close-btn" aria-label="Close Modal">✕</button>
+      </div>
+
+      <div class="crop-modal-body">
+        <p class="modal-intro">
+          This system uses <code>crops_config.json</code> to configure plants. Select an active preset below or customize the plants:
+        </p>
+
+        <div class="modal-preset-selector">
+          <label>Select Preset Profile:</label>
+          <select id="modalPresetSelect" class="modal-select">
+            <option value="tomatoes">🍅 Himalayan Terrace Tomatoes (5 Plants)</option>
+            <option value="avocado">🥑 Highland Avocado Trees (4 Trees)</option>
+            <option value="lime">🍋 Kagzi Lime Bio-Fence (6 Bushes)</option>
+            <option value="turmeric">🌿 Black Turmeric Raised Beds (3 Beds)</option>
+          </select>
+        </div>
+
+        <div class="modal-plants-editor">
+          <h4>Active Plants in Selected Profile:</h4>
+          <div id="modalPlantsList" class="modal-plants-list">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <div class="modal-tip-box">
+          💡 <strong>Tip for Beginners:</strong> You can also edit <code>crops_config.json</code> directly in the project folder to change plant varieties, add extra pots, or adjust watering thresholds anytime.
+        </div>
+      </div>
+
+      <div class="crop-modal-footer">
+        <button id="btnSavePreset" class="btn btn-save-preset">Apply Profile to Dashboard</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Floating Agronomist Copilot Action Button -->
+  <button id="chatFloatingBtn" class="chat-floating-btn" aria-label="Open Agronomist AI Copilot">
+    <span class="chat-btn-pulse"></span>
+    <span class="chat-btn-icon">🌾</span>
+    <span class="chat-btn-label">FarmHub AI Helper</span>
+  </button>
+
+  <!-- Slide-Over Copilot Chat Drawer -->
+  <div id="chatDrawer" class="chat-drawer" role="dialog" aria-modal="true" aria-labelledby="chatTitle">
+    <div class="chat-drawer-header">
+      <div class="chat-title-group">
+        <div class="chat-avatar">🌱</div>
+        <div>
+          <h3 id="chatTitle" class="chat-title">FarmHub AI Assistant</h3>
+          <p class="chat-status"><span class="chat-status-dot"></span> Connected to live farm telemetry</p>
+        </div>
+      </div>
+      <button id="chatCloseBtn" class="chat-close-btn" aria-label="Close Chat">✕</button>
+    </div>
+
+    <!-- Scrollable Messages Log -->
+    <div id="chatMessages" class="chat-messages">
+      <div class="chat-msg ai-msg">
+        <div class="msg-bubble">
+          Namaste! I am your <strong>FarmHub AI Assistant</strong>. I am watching your terrace crops, 12V battery, water tank, and Himalayan mountain weather in real time. Ask me anything in simple words!
+        </div>
+        <span class="msg-time">Just now</span>
+      </div>
+    </div>
+
+    <!-- Quick Prompt Chips in Plain English -->
+    <div class="chat-chips-scroll">
+      <button class="chat-chip" data-prompt="How are my plants doing right now?">🌱 Plant Health</button>
+      <button class="chat-chip" data-prompt="Why did you decide to water or not water?">🤔 Why Did You Water?</button>
+      <button class="chat-chip" data-prompt="Is it going to rain today?">🌦️ Rain Forecast</button>
+      <button class="chat-chip" data-prompt="How much water and battery is left?">🔋 Water &amp; Battery</button>
+    </div>
+
+    <!-- Input Form -->
+    <form id="chatForm" class="chat-form">
+      <input type="text" id="chatInput" class="chat-input" placeholder="Ask in simple English (e.g. Do my plants need water?)..." autocomplete="off">
+      <button type="submit" id="chatSendBtn" class="chat-send-btn" aria-label="Send message">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="22" y1="2" x2="11" y2="13"></line>
+          <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+        </svg>
+      </button>
+    </form>
+  </div>
+
+  <div id="chatBackdrop" class="chat-backdrop"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

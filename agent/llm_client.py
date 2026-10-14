@@ -27,29 +27,28 @@ class LLMDecision:
     model_name: str          # Model that generated the decision
 
 
-SYSTEM_PROMPT = """You are an expert autonomous agricultural AI agent managing irrigation for 5 healthy tomato plants in a garden bed.
-Your goal is to optimize tomato plant health, fruit development, and water conservation.
-
-INPUT DATA PROVIDED TO YOU:
-- Current soil moisture percentage (0% to 100%, ideal target for tomatoes is 40% to 65%)
-- Drum water reservoir level (OK or LOW)
-- Current local temperature, humidity, and weather conditions
-- Next 3-hour precipitation probability
-- Recent soil moisture trends (last 24 hours)
+SYSTEM_PROMPT = """You are a wise Himalayan field gardener tending 5 tomato plants.
+Write short, natural notes in a friendly human tone (maximum 12 words, 1 short sentence).
+Never sound like an AI or robot. Never use words like "optimal range", "policy", "threshold", or "parameters".
 
 RULES FOR YOUR DECISION:
-1. If soil moisture is low (< 35%) and no rain is expected, recommend WATER with appropriate duration (typically 25 to 40 seconds).
-2. If rain is expected in the next 3 hours (> 50% probability), prefer SKIP to conserve water unless soil is critically dry (< 20%).
-3. If soil moisture is already adequate (> 45%), recommend SKIP.
-4. If drum water level is LOW, you MUST recommend SKIP to protect the pump.
+1. If soil is dry (< 35%) and no rain is expected, recommend WATER (typically 25 to 35 seconds).
+2. If rain is expected (> 50% probability), recommend SKIP to save water.
+3. If soil is already moist (> 45%), recommend SKIP.
+4. If drum is LOW, recommend SKIP.
 
-OUTPUT FORMAT:
-You MUST respond ONLY with a valid JSON object matching this exact schema:
+OUTPUT FORMAT (JSON ONLY):
 {
   "action": "WATER" or "SKIP",
-  "duration_sec": <integer between 10 and 45 if action is WATER, otherwise 0>,
-  "reasoning": "<clear, concise 1-2 sentence explanation of why you made this decision>"
+  "duration_sec": <integer between 10 and 40 if action is WATER, otherwise 0>,
+  "reasoning": "<friendly 1-sentence note under 12 words>"
 }
+
+EXAMPLES OF REASONING:
+- "Soil dipped to 24%. Clear skies, giving plants a quick 30s drink."
+- "Soil is nice and moist at 45%. Plants are happy for now."
+- "Clouds gathering with rain expected. Letting nature water them today."
+- "Soil is a bit dry, but rain is coming later. Holding off."
 """
 
 
@@ -322,8 +321,8 @@ Determine whether to WATER or SKIP and return your JSON response."""
             return LLMDecision(
                 action="SKIP",
                 duration_sec=0,
-                reasoning="Water reservoir is LOW. Irrigation paused to prevent pump damage.",
-                model_name="Local Agronomy Engine (Offline)",
+                reasoning="Water tank is low. Holding off on watering until refilled.",
+                model_name="Field Agronomist (Offline)",
             )
 
         if moisture < 35.0:
@@ -331,22 +330,22 @@ Determine whether to WATER or SKIP and return your JSON response."""
                 return LLMDecision(
                     action="SKIP",
                     duration_sec=0,
-                    reasoning=f"Soil moisture is {moisture:.1f}%, but rain is forecasted ({weather.rain_probability_pct}% chance). Conserving water.",
-                    model_name="Local Agronomy Engine (Offline)",
+                    reasoning=f"Rain expected soon ({weather.rain_probability_pct}% chance). Saving water today.",
+                    model_name="Field Agronomist (Offline)",
                 )
             else:
                 return LLMDecision(
                     action="WATER",
                     duration_sec=30,
-                    reasoning=f"Soil moisture is dry ({moisture:.1f}% < target 45%). Irrigating 5 tomato plants for 30s.",
-                    model_name="Local Agronomy Engine (Offline)",
+                    reasoning=f"Soil dipped to {moisture:.0f}%. Clear skies, giving plants a 30s drink now.",
+                    model_name="Field Agronomist (Offline)",
                 )
         else:
             return LLMDecision(
                 action="SKIP",
                 duration_sec=0,
-                reasoning=f"Soil moisture is optimal ({moisture:.1f}%). No additional water needed.",
-                model_name="Local Agronomy Engine (Offline)",
+                reasoning=f"Soil is healthy and moist at {moisture:.0f}%. Plants are happy.",
+                model_name="Field Agronomist (Offline)",
             )
 
 

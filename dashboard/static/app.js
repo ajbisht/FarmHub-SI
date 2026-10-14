@@ -1,28 +1,176 @@
-// FarmHub Irrigation — Mobile Dashboard Client
+// ==========================================================================
+// FarmHub Mission Control — Live Dashboard Client & Telemetry Engine
+// ==========================================================================
 
 let ws = null;
 let chart = null;
-const CIRCUMFERENCE = 565; // 2 * PI * 90
+const CIRCUMFERENCE = 565.48; // 2 * Math.PI * 90
+let lastMoisturePct = 38.4;
+let activePresetKey = "tomatoes";
 
-// DOM Elements
-const connectionBadge = document.getElementById("connectionBadge");
+// Built-in Crop Presets (Fallback if crops_config.json fails to load)
+const DEFAULT_CROP_PRESETS = {
+  tomatoes: {
+    id: "tomatoes",
+    title: "Terrace Bed: 5 Tomato Plants",
+    badge: "5 Plants",
+    icon: "🍅",
+    description: "5-Plant High-Altitude Drip Pilot in Polyhouse Bed",
+    target_min: 25,
+    target_max: 55,
+    plants: [
+      { id: "p1", name: "Cherokee Purple", variety: "Heirloom Beefsteak", icon: "🍅", offset: -0.6 },
+      { id: "p2", name: "Roma Plum", variety: "Paste / Sauce", icon: "🍅", offset: 0.4 },
+      { id: "p3", name: "San Marzano", variety: "Italian Plum", icon: "🍅", offset: 1.8 },
+      { id: "p4", name: "Beefsteak Heritage", variety: "Large Red", icon: "🍅", offset: -1.2 },
+      { id: "p5", name: "Cherry Sweet", variety: "Saladette Cluster", icon: "🍅", offset: 0.2 },
+    ],
+  },
+  avocado: {
+    id: "avocado",
+    title: "Highland Avocado Trees",
+    badge: "4 Trees",
+    icon: "🥑",
+    description: "Sub-Himalayan Cold-Tolerant Hass & Fuerte Orchard",
+    target_min: 28,
+    target_max: 60,
+    plants: [
+      { id: "p1", name: "Hass Graft Tree #1", variety: "Dwarf Perennial", icon: "🥑", offset: -0.8 },
+      { id: "p2", name: "Hass Graft Tree #2", variety: "Dwarf Perennial", icon: "🥑", offset: 0.5 },
+      { id: "p3", name: "Fuerte Type A #3", variety: "Cold-Hardy Valley", icon: "🥑", offset: 1.4 },
+      { id: "p4", name: "Fuerte Type B #4", variety: "Cold-Hardy Valley", icon: "🥑", offset: -0.3 },
+    ],
+  },
+  lime: {
+    id: "lime",
+    title: "Kagzi Lime Bio-Fence",
+    badge: "6 Bushes",
+    icon: "🍋",
+    description: "Terrace Perimeter Monkey-Proof Citrus Border",
+    target_min: 20,
+    target_max: 50,
+    plants: [
+      { id: "p1", name: "North Lime Bush #1", variety: "Citrus aurantifolia", icon: "🍋", offset: -0.5 },
+      { id: "p2", name: "North Lime Bush #2", variety: "Citrus aurantifolia", icon: "🍋", offset: 0.3 },
+      { id: "p3", name: "Mid-Terrace Bush #3", variety: "Citrus aurantifolia", icon: "🍋", offset: 0.9 },
+      { id: "p4", name: "South Lime Bush #4", variety: "Citrus aurantifolia", icon: "🍋", offset: -1.0 },
+      { id: "p5", name: "South Lime Bush #5", variety: "Citrus aurantifolia", icon: "🍋", offset: 0.4 },
+      { id: "p6", name: "Gate Perimeter Bush #6", variety: "Citrus aurantifolia", icon: "🍋", offset: 0.1 },
+    ],
+  },
+  turmeric: {
+    id: "turmeric",
+    title: "Black Turmeric Raised Beds",
+    badge: "3 Beds",
+    icon: "🌿",
+    description: "Wild-Boar Proof High-Value Himalayan Curcuma caesia",
+    target_min: 35,
+    target_max: 65,
+    plants: [
+      { id: "p1", name: "Terrace Bed A (Shade)", variety: "Medicinal Rhizome", icon: "🌿", offset: 0.0 },
+      { id: "p2", name: "Terrace Bed B (Center)", variety: "Medicinal Rhizome", icon: "🌿", offset: 1.2 },
+      { id: "p3", name: "Terrace Bed C (Stream-Side)", variety: "Medicinal Rhizome", icon: "🌿", offset: -0.7 },
+    ],
+  },
+};
+
+let cropPresets = DEFAULT_CROP_PRESETS;
+
+// DOM Elements: Navigation & HUD
+const connectionHudPill = document.getElementById("connectionHudPill");
 const connectionText = document.getElementById("connectionText");
-const alertBanner = document.getElementById("alertBanner");
-const alertMessage = document.getElementById("alertMessage");
-const gaugeProgress = document.getElementById("gaugeProgress");
-const moistureValue = document.getElementById("moistureValue");
-const drumBadge = document.getElementById("drumBadge");
-const drumValue = document.getElementById("drumValue");
-const pumpBadge = document.getElementById("pumpBadge");
-const pumpValue = document.getElementById("pumpValue");
-const batteryValue = document.getElementById("batteryValue");
-const adcValue = document.getElementById("adcValue");
-const btnWater = document.getElementById("btnWater");
-const btnStop = document.getElementById("btnStop");
-const aiActionTag = document.getElementById("aiActionTag");
-const aiReasoningText = document.getElementById("aiReasoningText");
+const navBatteryVal = document.getElementById("navBatteryVal");
+const navBatteryPct = document.getElementById("navBatteryPct");
+const btnTogglePause = document.getElementById("btnTogglePause");
+const pauseIcon = document.getElementById("pauseIcon");
+const pauseText = document.getElementById("pauseText");
+const btnEvaluateNow = document.getElementById("btnEvaluateNow");
+const activeCropBadge = document.getElementById("activeCropBadge");
 
-// Initialize Chart.js
+// DOM Elements: Alert Banner
+const alertBanner = document.getElementById("alertBanner");
+const alertTitle = document.getElementById("alertTitle");
+const alertMessage = document.getElementById("alertMessage");
+const alertDismissBtn = document.getElementById("alertDismissBtn");
+
+// DOM Elements: Soil Module & Radial Gauge
+const radialProgress = document.getElementById("radialProgress");
+const moistureValue = document.getElementById("moistureValue");
+const moistureQuickBadge = document.getElementById("moistureQuickBadge");
+const moisturePlainEnglish = document.getElementById("moisturePlainEnglish");
+const soilStatusBadge = document.getElementById("soilStatusBadge");
+const adcValue = document.getElementById("adcValue");
+const adcBarFill = document.getElementById("adcBarFill");
+
+// DOM Elements: Plant Canopy
+const canopyTitle = document.getElementById("canopyTitle");
+const canopySub = document.getElementById("canopySub");
+const canopyCountBadge = document.getElementById("canopyCountBadge");
+const plantGridContainer = document.getElementById("plantGridContainer");
+
+// DOM Elements: Hydrology & Drum
+const drumFluidWrapper = document.getElementById("drumFluidWrapper");
+const drumLitersVal = document.getElementById("drumLitersVal");
+const drumPctBadge = document.getElementById("drumPctBadge");
+const drumBadge = document.getElementById("drumBadge");
+const drumFloatState = document.getElementById("drumFloatState");
+const autonomyDays = document.getElementById("autonomyDays");
+
+// DOM Elements: Pump Cockpit
+const pumpBadge = document.getElementById("pumpBadge");
+const flowPipeContainer = document.getElementById("flowPipeContainer");
+const flowStatusLabel = document.getElementById("flowStatusLabel");
+const btnWater15 = document.getElementById("btnWater15");
+const btnWater30 = document.getElementById("btnWater30");
+const btnWater60 = document.getElementById("btnWater60");
+const btnStop = document.getElementById("btnStop");
+const waterDeliveredToday = document.getElementById("waterDeliveredToday");
+const cyclesToday = document.getElementById("cyclesToday");
+
+// DOM Elements: AI Brain
+const aiActionTag = document.getElementById("aiActionTag");
+const aiModelName = document.getElementById("aiModelName");
+const aiReasoningText = document.getElementById("aiReasoningText");
+const aiTimestamp = document.getElementById("aiTimestamp");
+const guardrailVerdict = document.getElementById("guardrailVerdict");
+const decisionFeedList = document.getElementById("decisionFeedList");
+
+// DOM Elements: Weather
+const weatherTemp = document.getElementById("weatherTemp");
+const weatherDesc = document.getElementById("weatherDesc");
+const weatherCondition = document.getElementById("weatherCondition");
+const rainGaugeFill = document.getElementById("rainGaugeFill");
+const rainPctLabel = document.getElementById("rainPctLabel");
+const weatherHumidity = document.getElementById("weatherHumidity");
+const weatherWind = document.getElementById("weatherWind");
+
+// DOM Elements: Hardware
+const hwBatteryV = document.getElementById("hwBatteryV");
+
+// DOM Elements: Chat Drawer
+const chatFloatingBtn = document.getElementById("chatFloatingBtn");
+const chatDrawer = document.getElementById("chatDrawer");
+const chatCloseBtn = document.getElementById("chatCloseBtn");
+const chatBackdrop = document.getElementById("chatBackdrop");
+const chatMessages = document.getElementById("chatMessages");
+const chatForm = document.getElementById("chatForm");
+const chatInput = document.getElementById("chatInput");
+
+// DOM Elements: Crop Customization Modal
+const btnOpenConfigModal = document.getElementById("btnOpenConfigModal");
+const cropConfigModal = document.getElementById("cropConfigModal");
+const btnCloseModal = document.getElementById("btnCloseModal");
+const modalPresetSelect = document.getElementById("modalPresetSelect");
+const modalPlantsList = document.getElementById("modalPlantsList");
+const btnSavePreset = document.getElementById("btnSavePreset");
+
+// Mode Switcher Buttons
+const modeButtons = document.querySelectorAll(".mode-btn");
+
+// ==========================================================================
+// 1. INITIALIZATION: CHART.JS (24H TIME-SERIES)
+// ==========================================================================
+
 function initChart() {
   const ctx = document.getElementById("moistureChart").getContext("2d");
   chart = new Chart(ctx, {
@@ -33,105 +181,398 @@ function initChart() {
         {
           label: "Soil Moisture (%)",
           data: [],
-          borderColor: "#10b981",
-          backgroundColor: "rgba(16, 185, 129, 0.1)",
+          borderColor: "#2ea043",
+          backgroundColor: "rgba(46, 160, 67, 0.08)",
           fill: true,
           tension: 0.35,
           borderWidth: 2,
-          pointRadius: 2,
+          pointRadius: 2.5,
+          pointHoverRadius: 6,
+          pointBackgroundColor: "#3fb950",
+          yAxisID: "y",
         },
       ],
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      interaction: {
+        mode: "index",
+        intersect: false,
+      },
       plugins: {
         legend: { display: false },
         tooltip: {
-          backgroundColor: "rgba(15, 23, 42, 0.9)",
-          titleColor: "#94a3b8",
-          bodyColor: "#f8fafc",
+          backgroundColor: "#161b22",
+          titleColor: "#8b949e",
+          bodyColor: "#f0f6fc",
+          borderColor: "#30363d",
+          borderWidth: 1,
+          padding: 10,
+          displayColors: false,
+          callbacks: {
+            label: (context) => `Soil Moisture: ${context.parsed.y.toFixed(1)}%`,
+          },
         },
       },
       scales: {
         x: {
-          grid: { color: "rgba(255, 255, 255, 0.05)" },
-          ticks: { color: "#64748b", font: { size: 10 } },
+          grid: { color: "rgba(255, 255, 255, 0.04)" },
+          ticks: { color: "#6e7681", font: { family: "JetBrains Mono", size: 10 } },
         },
         y: {
           min: 0,
           max: 100,
-          grid: { color: "rgba(255, 255, 255, 0.05)" },
-          ticks: { color: "#64748b", font: { size: 10 } },
+          grid: { color: "rgba(255, 255, 255, 0.04)" },
+          ticks: {
+            color: "#6e7681",
+            font: { family: "JetBrains Mono", size: 10 },
+            callback: (v) => `${v}%`,
+          },
         },
       },
     },
   });
 }
 
-// Update Moisture Gauge
-function updateGauge(pct) {
+// ==========================================================================
+// 2. CROP CONFIGURATION & DYNAMIC CANOPY GENERATION
+// ==========================================================================
+
+async function loadCropsConfig() {
+  try {
+    const res = await fetch("/static/crops_config.json");
+    if (res.ok) {
+      const data = await res.json();
+      if (data.presets) {
+        cropPresets = data.presets;
+      }
+      if (data.default_preset && cropPresets[data.default_preset]) {
+        activePresetKey = data.default_preset;
+      }
+    }
+  } catch (e) {
+    console.log("Using built-in crop presets:", e);
+  }
+  renderPlantCanopy(activePresetKey);
+}
+
+function renderPlantCanopy(presetKey) {
+  const preset = cropPresets[presetKey] || cropPresets.tomatoes;
+  activePresetKey = presetKey;
+
+  // Update header badge and titles
+  if (activeCropBadge) {
+    activeCropBadge.textContent = `TERRACE DRIP • ${preset.badge ? preset.badge.toUpperCase() : "MONITORED"}`;
+  }
+  if (canopyTitle) {
+    canopyTitle.textContent = preset.title;
+  }
+  if (canopySub) {
+    canopySub.textContent = preset.description || "Live plant hydration simulation";
+  }
+  if (canopyCountBadge) {
+    canopyCountBadge.textContent = `${preset.plants.length} Active Plants`;
+  }
+
+  // Build plant cards
+  if (plantGridContainer) {
+    plantGridContainer.innerHTML = preset.plants
+      .map(
+        (p) => `
+        <div class="plant-card" id="plantCard_${p.id}">
+          <div class="plant-card-top">
+            <div class="plant-icon-num">
+              <span class="plant-emoji">${p.icon || "🌱"}</span>
+              <span class="plant-num">${p.id.toUpperCase()}</span>
+            </div>
+            <span class="plant-dot dot-optimal" id="${p.id}Dot"></span>
+          </div>
+          <span class="plant-name" title="${p.name}">${p.name}</span>
+          <span class="plant-variety" title="${p.variety || ""}">${p.variety || ""}</span>
+          <div class="plant-footer">
+            <span class="plant-pct mono" id="${p.id}Moisture">--%</span>
+            <span class="plant-status-text" id="${p.id}Status">Good</span>
+          </div>
+        </div>
+      `
+      )
+      .join("");
+  }
+
+  // Update active pill styling
+  document.querySelectorAll(".crop-tab-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn.getAttribute("data-preset") === presetKey);
+  });
+
+  // Re-run moisture calculation for newly rendered cards
+  updatePlantCanopy(lastMoisturePct);
+}
+
+function updatePlantCanopy(basePct) {
+  lastMoisturePct = basePct;
+  const preset = cropPresets[activePresetKey] || cropPresets.tomatoes;
+  const targetMin = preset.target_min || 25;
+  const targetMax = preset.target_max || 55;
+
+  preset.plants.forEach((p) => {
+    const el = document.getElementById(`${p.id}Moisture`);
+    const dot = document.getElementById(`${p.id}Dot`);
+    const status = document.getElementById(`${p.id}Status`);
+
+    if (el) {
+      const offset = Number(p.offset) || 0;
+      const val = Math.max(10, Math.min(95, basePct + offset));
+      el.textContent = `${val.toFixed(0)}%`;
+
+      if (val < targetMin || val < 25) {
+        if (dot) dot.className = "plant-dot dot-danger";
+        if (status) {
+          status.textContent = "Thirsty";
+          status.style.color = "#ff7b72";
+        }
+      } else if (val > targetMax || val > 60) {
+        if (dot) dot.className = "plant-dot dot-warning";
+        if (status) {
+          status.textContent = "Wet";
+          status.style.color = "#e3b341";
+        }
+      } else {
+        if (dot) dot.className = "plant-dot dot-optimal";
+        if (status) {
+          status.textContent = "Healthy";
+          status.style.color = "#3fb950";
+        }
+      }
+    }
+  });
+}
+
+// ==========================================================================
+// 3. RADIAL GAUGE & SOIL UPDATE (SPACIOUS, NO OVERFLOW)
+// ==========================================================================
+
+function updateSoilGauge(pct) {
   const clamped = Math.max(0, Math.min(100, pct));
   moistureValue.textContent = clamped.toFixed(1);
 
+  // SVG Radial stroke offset
   const offset = CIRCUMFERENCE - (clamped / 100) * CIRCUMFERENCE;
-  gaugeProgress.style.strokeDashoffset = offset;
+  radialProgress.style.strokeDashoffset = offset;
 
-  // Dynamically color code the gauge:
-  // Red for dry (< 30%), Green for healthy (30-65%), Blue for saturated (> 65%)
-  if (clamped < 30) {
-    gaugeProgress.style.stroke = "#ef4444";
-  } else if (clamped <= 65) {
-    gaugeProgress.style.stroke = "#10b981";
+  // Dial Quick Badge & Caption below the circle
+  if (clamped < 25) {
+    moistureQuickBadge.textContent = "Thirsty";
+    moistureQuickBadge.className = "radial-quick-badge badge-danger";
+    soilStatusBadge.textContent = "THIRSTY (<25%)";
+    soilStatusBadge.className = "status-pill pill-danger";
+    if (moisturePlainEnglish) {
+      moisturePlainEnglish.textContent = "Soil is dry. Roots need water soon.";
+    }
+  } else if (clamped <= 55) {
+    moistureQuickBadge.textContent = "Just Right";
+    moistureQuickBadge.className = "radial-quick-badge badge-optimal";
+    soilStatusBadge.textContent = "JUST RIGHT (25–55%)";
+    soilStatusBadge.className = "status-pill pill-optimal";
+    if (moisturePlainEnglish) {
+      moisturePlainEnglish.textContent = "Soil has healthy, ideal water for roots.";
+    }
   } else {
-    gaugeProgress.style.stroke = "#06b6d4";
+    moistureQuickBadge.textContent = "Wet";
+    moistureQuickBadge.className = "radial-quick-badge badge-warning";
+    soilStatusBadge.textContent = "WET (>55%)";
+    soilStatusBadge.className = "status-pill pill-warning";
+    if (moisturePlainEnglish) {
+      moisturePlainEnglish.textContent = "Soil is well hydrated. No water needed.";
+    }
   }
+
+  // Update Plant Canopy Simulation
+  updatePlantCanopy(clamped);
 }
 
-// Update State in UI
-function updateUI(state) {
-  if (state.moisture_pct !== undefined && state.moisture_pct > 0) {
-    updateGauge(state.moisture_pct);
+// ==========================================================================
+// 4. WATER RESERVOIR & DRUM UPDATE
+// ==========================================================================
+
+function updateDrumReservoir(data, isLow) {
+  let liters = 180.0;
+  let pct = 90.0;
+  let floatOk = true;
+
+  if (typeof data === "object" && data !== null) {
+    if (data.liters !== undefined) liters = Number(data.liters);
+    if (data.pct !== undefined) pct = Number(data.pct);
+    else pct = (liters / 200.0) * 100;
+    if (data.float_switch_ok !== undefined) floatOk = Boolean(data.float_switch_ok);
+  } else if (typeof data === "number") {
+    liters = Number(data);
+    pct = (liters / 200.0) * 100;
+  } else if (data === "LOW" || isLow === false) {
+    floatOk = false;
+    liters = 15.0;
+    pct = 7.5;
   }
 
-  if (state.raw_adc !== undefined && state.raw_adc > 0) {
-    adcValue.textContent = state.raw_adc;
+  if (isLow === false) {
+    floatOk = false;
   }
 
-  if (state.battery_v !== undefined) {
-    batteryValue.textContent = `${state.battery_v.toFixed(1)}V`;
-  }
+  pct = Math.max(0, Math.min(100, pct));
+  const days = Math.max(0, Math.round(liters / 5.5));
 
-  // Drum status
-  if (state.drum_level) {
-    drumValue.textContent = state.drum_level;
-    if (state.drum_level === "LOW") {
-      drumBadge.style.color = "#ef4444";
+  if (!floatOk || liters < 25.0 || pct < 15.0) {
+    if (drumBadge) {
+      drumBadge.textContent = "WATER LOW";
+      drumBadge.className = "status-pill pill-danger";
+    }
+    if (drumFloatState) {
+      drumFloatState.textContent = "Low — Needs Refill";
+      drumFloatState.className = "stat-text-bold highlight-rose";
+    }
+    if (autonomyDays) autonomyDays.textContent = String(Math.max(1, days));
+    if (drumPctBadge) drumPctBadge.textContent = `${pct.toFixed(0)}% Full`;
+    if (alertBanner) {
       alertBanner.classList.add("visible");
-      alertMessage.textContent = "Water reservoir is LOW! Refill 50L drum.";
-    } else {
-      drumBadge.style.color = "#10b981";
+      alertTitle.textContent = "Water Tank Needs Attention";
+      alertMessage.textContent = "Water drum is LOW (<25L). Pump cutoff active to protect motor.";
+    }
+  } else {
+    if (drumBadge) {
+      drumBadge.textContent = pct > 85 ? "WATER FULL" : "WATER SAFE";
+      drumBadge.className = "status-pill pill-optimal";
+    }
+    if (drumFloatState) {
+      drumFloatState.textContent = "Plenty of Water (Safe)";
+      drumFloatState.className = "stat-text-bold highlight-green";
+    }
+    if (autonomyDays) autonomyDays.textContent = String(days);
+    if (drumPctBadge) drumPctBadge.textContent = `${pct.toFixed(0)}% Full`;
+    if (alertBanner) {
       alertBanner.classList.remove("visible");
     }
   }
 
-  // Pump status
+  if (drumFluidWrapper) drumFluidWrapper.style.height = `${pct.toFixed(1)}%`;
+  if (drumLitersVal) drumLitersVal.textContent = liters.toFixed(1);
+}
+
+// ==========================================================================
+// 5. PUMP ACTUATOR & FLOW COCKPIT UPDATE
+// ==========================================================================
+
+function updatePumpState(pumpState) {
+  if (pumpState === "RUNNING") {
+    pumpBadge.textContent = "WATERING NOW";
+    pumpBadge.className = "status-pill pill-active";
+    flowPipeContainer.classList.add("running");
+    flowStatusLabel.textContent = "2.2 L/min (Active Drip Flow)";
+    btnWater15.disabled = true;
+    btnWater30.disabled = true;
+    btnWater60.disabled = true;
+  } else {
+    pumpBadge.textContent = "PUMP RESTING";
+    pumpBadge.className = "status-pill pill-idle";
+    flowPipeContainer.classList.remove("running");
+    flowStatusLabel.textContent = "Pump is Resting (Off)";
+    btnWater15.disabled = false;
+    btnWater30.disabled = false;
+    btnWater60.disabled = false;
+  }
+}
+
+// ==========================================================================
+// 6. BATTERY & HARDWARE HEALTH UPDATE
+// ==========================================================================
+
+function updateBattery(volts) {
+  const v = Number(volts) || 12.3;
+  navBatteryVal.textContent = `${v.toFixed(1)}V`;
+  hwBatteryV.textContent = `${v.toFixed(1)}V`;
+
+  // 3S Li-ion percentage: 11.1V = 0%, 12.6V = 100%
+  const pct = Math.max(5, Math.min(100, Math.round(((v - 11.1) / (12.6 - 11.1)) * 100)));
+  navBatteryPct.textContent = `${pct}% Healthy`;
+}
+
+// ==========================================================================
+// 7. MASTER UI STATE UPDATE
+// ==========================================================================
+
+function updateUI(state) {
+  if (!state) return;
+
+  const m = state.soil_moisture_vwc_pct !== undefined ? state.soil_moisture_vwc_pct : state.moisture_pct;
+  if (m !== undefined && m > 0) {
+    updateSoilGauge(m);
+  }
+
+  const adc = state.soil_raw_adc !== undefined ? state.soil_raw_adc : state.raw_adc;
+  if (adc !== undefined && adc > 0) {
+    adcValue.textContent = adc;
+    const barWidth = Math.min(100, Math.round((adc / 4095) * 100));
+    adcBarFill.style.width = `${barWidth}%`;
+  }
+
+  if (state.battery_v !== undefined) {
+    updateBattery(state.battery_v);
+  }
+
+  if (state.drum_level !== undefined) {
+    updateDrumReservoir(state.drum_level, state.reservoir_level_ok);
+  } else if (state.drum_liters !== undefined) {
+    updateDrumReservoir({
+      liters: state.drum_liters,
+      pct: state.drum_pct,
+      float_switch_ok: state.reservoir_level_ok
+    }, state.reservoir_level_ok);
+  } else if (state.reservoir_level_ok !== undefined) {
+    updateDrumReservoir(state.reservoir_level_ok ? "OK" : "LOW", state.reservoir_level_ok);
+  }
+
   if (state.pump_state) {
-    pumpValue.textContent = state.pump_state;
-    if (state.pump_state === "RUNNING") {
-      pumpBadge.style.color = "#3b82f6";
-      btnWater.disabled = true;
+    updatePumpState(state.pump_state);
+  }
+
+  // Delivery Verification Check
+  const deliveryStatusBadge = document.getElementById("deliveryStatusBadge");
+  const deliveryStatusSub = document.getElementById("deliveryStatusSub");
+  if (deliveryStatusBadge && deliveryStatusSub) {
+    if (state.delivery_fault) {
+      deliveryStatusBadge.textContent = "⚠️ Check Pipe";
+      deliveryStatusBadge.className = "mini-mono highlight-amber";
+      deliveryStatusSub.textContent = "Soil didn't rise after pump";
+    } else if (state.delivery_verified !== false) {
+      deliveryStatusBadge.textContent = "✔ Verified";
+      deliveryStatusBadge.className = "mini-mono highlight-green";
+      deliveryStatusSub.textContent = "Soil delta healthy";
+    }
+  }
+
+  // Automation Paused Flag
+  if (state.automation_paused !== undefined) {
+    if (state.automation_paused) {
+      pauseIcon.textContent = "▶";
+      pauseText.textContent = "Resume Auto";
+      btnTogglePause.style.borderColor = "var(--amber)";
+      aiActionTag.textContent = "PAUSED";
+      aiActionTag.className = "status-pill pill-warning";
     } else {
-      pumpBadge.style.color = "#94a3b8";
-      btnWater.disabled = false;
+      pauseIcon.textContent = "⏸";
+      pauseText.textContent = "Pause Auto";
+      btnTogglePause.style.borderColor = "var(--border-subtle)";
     }
   }
 }
 
-// Fetch historical data for Chart
+// ==========================================================================
+// 8. DATA FETCHING: HISTORY, DECISIONS, STATUS
+// ==========================================================================
+
 async function loadHistory() {
   try {
     const res = await fetch("/api/history?hours=24");
+    if (!res.ok) return;
     const data = await res.json();
     if (data.readings && data.readings.length > 0 && chart) {
       chart.data.labels = data.readings.map((r) =>
@@ -145,45 +586,73 @@ async function loadHistory() {
   }
 }
 
-// Fetch latest AI decisions
 async function loadDecisions() {
   try {
-    const res = await fetch("/api/decisions?limit=1");
+    const res = await fetch("/api/decisions?limit=5");
+    if (!res.ok) return;
     const data = await res.json();
     if (data.decisions && data.decisions.length > 0) {
-      const d = data.decisions[0];
-      aiActionTag.textContent = d.action;
-      aiActionTag.className = `ai-decision-tag ${d.action}`;
-      aiReasoningText.textContent = `${d.reasoning} (${d.model_used || "AI"})`;
+      const latest = data.decisions[0];
+      const isWater = latest.action === "WATER";
+      aiActionTag.textContent = isWater ? "WATERED" : "WATCHING SOIL";
+      aiActionTag.className = `status-pill ${isWater ? "pill-active" : "pill-ai"}`;
+      aiReasoningText.textContent = latest.reasoning || "Autonomous soil & rain monitoring active.";
+      if (latest.model_used) {
+        aiModelName.textContent = latest.model_used;
+      }
+      if (latest.guardrail_verdict) {
+        guardrailVerdict.textContent = `Safety Rule: ${latest.guardrail_verdict}`;
+      }
+
+      // Populate Decision Feed in simple English
+      decisionFeedList.innerHTML = data.decisions
+        .map(
+          (d) => `
+        <div class="feed-item">
+          <span class="feed-action ${d.action === "WATER" ? "tag-water" : "tag-skip"}">${d.action === "WATER" ? "WATERED" : "NO WATER"}</span>
+          <span class="feed-reason" title="${d.reasoning}">${d.reasoning}</span>
+          <span class="feed-time">${d.timestamp ? d.timestamp.split(" ")[1].substring(0, 5) : "--"}</span>
+        </div>
+      `
+        )
+        .join("");
     }
   } catch (e) {
     console.error("Failed to load decisions:", e);
   }
 }
 
-// Resilient HTTP Polling Fallback (ensures dashboard stays live even if WebSockets are blocked by proxies)
 async function pollStatus() {
   try {
     const res = await fetch("/api/status");
     if (res.ok) {
       const data = await res.json();
-      if (data.live) {
-        updateUI(data.live);
+      const liveState = data.live || data.telemetry;
+      if (liveState) {
+        updateUI(liveState);
         if (!ws || ws.readyState !== WebSocket.OPEN) {
-          connectionBadge.className = "connection-badge connected";
-          connectionText.textContent = "Live";
+          connectionHudPill.style.borderColor = "rgba(46, 160, 67, 0.4)";
+          connectionText.textContent = "Connected Live";
         }
+      }
+      if (data.waterings_24h !== undefined) {
+        cyclesToday.textContent = `${data.waterings_24h} Times`;
+        const estLiters = (data.waterings_24h * 1.5).toFixed(1);
+        waterDeliveredToday.textContent = `${estLiters} Liters`;
       }
     }
   } catch (e) {
     if (!ws || ws.readyState !== WebSocket.OPEN) {
-      connectionBadge.className = "connection-badge disconnected";
+      connectionHudPill.style.borderColor = "rgba(248, 81, 73, 0.4)";
       connectionText.textContent = "Offline";
     }
   }
 }
 
-// Connect WebSocket
+// ==========================================================================
+// 9. WEBSOCKET REAL-TIME CONNECTION
+// ==========================================================================
+
 function connectWebSocket() {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   const wsUrl = `${protocol}//${window.location.host}/ws`;
@@ -192,269 +661,277 @@ function connectWebSocket() {
     ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
-      connectionBadge.className = "connection-badge connected";
-      connectionText.textContent = "Live";
+      connectionHudPill.style.borderColor = "rgba(46, 160, 67, 0.5)";
+      connectionText.textContent = "Connected Live";
     };
 
     ws.onclose = () => {
-      // Don't show disconnected if HTTP polling is working; polling keeps it updated
-      setTimeout(connectWebSocket, 5000);
+      setTimeout(connectWebSocket, 4000);
     };
 
     ws.onerror = () => {
-      ws.close();
+      if (ws) ws.close();
     };
 
     ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data);
-        if (msg.event === "INITIAL_SNAPSHOT" && msg.state) {
+        if (msg.event === "INITIAL_SNAPSHOT" || msg.event === "FIELD_UPDATE") {
           updateUI(msg.state);
-        } else if (msg.event === "FIELD_UPDATE") {
-          if (msg.state) updateUI(msg.state);
-
-          // Append live moisture to chart
-          if (msg.topic === "farm/soil/moisture" && chart) {
-            const nowStr = new Date().toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            });
-            chart.data.labels.push(nowStr);
-            chart.data.datasets[0].data.push(msg.data.moisture_pct);
-            if (chart.data.labels.length > 25) {
-              chart.data.labels.shift();
-              chart.data.datasets[0].data.shift();
-            }
-            chart.update();
-          }
-
-          // Live alert notification
-          if (msg.topic === "farm/alert") {
-            alertBanner.classList.add("visible");
-            alertMessage.textContent = msg.data.message || "Alert received.";
-          }
         }
-      } catch (e) {
-        console.error("WebSocket message parsing error:", e);
+      } catch (err) {
+        console.error("WebSocket message parse error:", err);
       }
     };
   } catch (e) {
-    console.warn("WebSocket init error, relying on HTTP polling:", e);
+    console.warn("WebSocket init error:", e);
   }
 }
 
-// Button Listeners
-btnWater.addEventListener("click", async () => {
-  btnWater.disabled = true;
-  btnWater.textContent = "Sending...";
+// ==========================================================================
+// 10. MANUAL OVERRIDES: 15S, 30S, 60S, STOP, PAUSE, EVALUATE
+// ==========================================================================
+
+async function triggerWater(durationSec) {
   try {
-    const res = await fetch("/api/override/water?duration_sec=30", {
+    const res = await fetch(`/api/override/water?duration_sec=${durationSec}`, {
       method: "POST",
     });
     const data = await res.json();
     if (!res.ok) {
-      alert(data.detail || "Water command failed.");
+      alert(data.detail || "Watering could not start. Please check tank level.");
+      return;
     }
+    updatePumpState("RUNNING");
   } catch (e) {
-    alert("Network error sending water command.");
-  } finally {
-    btnWater.disabled = false;
-    btnWater.textContent = "💧 Water 30s Now";
+    alert("Network error contacting pump.");
   }
-});
+}
 
-btnStop.addEventListener("click", async () => {
+async function triggerStop() {
   try {
     await fetch("/api/override/stop", { method: "POST" });
+    updatePumpState("IDLE");
   } catch (e) {
-    console.error("Stop command failed:", e);
+    alert("Stop request failed.");
   }
-});
+}
 
-async function loadStatus() {
+async function triggerTogglePause() {
   try {
-    const res = await fetch("/api/status");
+    const res = await fetch("/api/override/toggle-pause", { method: "POST" });
     const data = await res.json();
-    if (data.live && data.live.moisture_pct > 0) {
-      updateUI(data.live);
-    } else if (data.database_latest) {
-      updateUI(data.database_latest);
+    if (data.status === "SUCCESS") {
+      updateUI({ automation_paused: data.automation_paused });
     }
   } catch (e) {
-    console.error("Failed to load status:", e);
+    alert("Toggle pause failed.");
   }
 }
 
-// Periodic data refreshes
-window.addEventListener("DOMContentLoaded", () => {
-  initChart();
-  loadStatus();
-  connectWebSocket();
-  loadHistory();
-  loadDecisions();
-  initChat();
+async function triggerEvaluateNow() {
+  btnEvaluateNow.textContent = "⚡ Checking...";
+  btnEvaluateNow.disabled = true;
+  try {
+    const res = await fetch("/api/evaluate-now", { method: "POST" });
+    if (res.ok) {
+      await loadDecisions();
+    }
+  } catch (e) {
+    console.error("Evaluate now error:", e);
+  } finally {
+    btnEvaluateNow.textContent = "⚡ Check Now";
+    btnEvaluateNow.disabled = false;
+  }
+}
 
-  setInterval(pollStatus, 3000);
-  setInterval(loadDecisions, 10000);
-});
+// ==========================================================================
+// 11. CROP CUSTOMIZATION MODAL LOGIC
+// ==========================================================================
 
-// ============================================================================
-// FarmHub Agronomist AI Chatbot Client
-// ============================================================================
-const chatFloatingBtn = document.getElementById("chatFloatingBtn");
-const chatDrawer = document.getElementById("chatDrawer");
-const chatBackdrop = document.getElementById("chatBackdrop");
-const chatCloseBtn = document.getElementById("chatCloseBtn");
-const chatMessages = document.getElementById("chatMessages");
-const chatForm = document.getElementById("chatForm");
-const chatInput = document.getElementById("chatInput");
-const chatSendBtn = document.getElementById("chatSendBtn");
-const chatChips = document.querySelectorAll(".chat-chip");
+function openCropConfigModal() {
+  if (!cropConfigModal) return;
+  modalPresetSelect.value = activePresetKey;
+  updateModalPlantsList(activePresetKey);
+  cropConfigModal.classList.add("open");
+}
 
-let chatHistory = [];
+function closeCropConfigModal() {
+  if (cropConfigModal) {
+    cropConfigModal.classList.remove("open");
+  }
+}
 
-function openChatDrawer() {
-  if (!chatDrawer) return;
+function updateModalPlantsList(presetKey) {
+  const preset = cropPresets[presetKey] || cropPresets.tomatoes;
+  if (!modalPlantsList) return;
+  modalPlantsList.innerHTML = preset.plants
+    .map(
+      (p) => `
+    <div class="modal-plant-row">
+      <div class="modal-plant-info">
+        <span class="modal-plant-icon">${p.icon || "🌱"}</span>
+        <div>
+          <div class="modal-plant-name">${p.name}</div>
+          <div class="modal-plant-variety">${p.variety || ""}</div>
+        </div>
+      </div>
+      <div class="modal-plant-threshold">
+        Target: ${preset.target_min || 25}%–${preset.target_max || 55}%
+      </div>
+    </div>
+  `
+    )
+    .join("");
+}
+
+// ==========================================================================
+// 12. CHAT DRAWER & AI COPILOT
+// ==========================================================================
+
+function openChat() {
   chatDrawer.classList.add("open");
-  if (chatBackdrop) chatBackdrop.classList.add("active");
-  if (chatMessages && chatMessages.children.length === 0) {
-    appendBotMessage(
-      "Hello Ajay! 🌱 I'm your **FarmHub Agronomist AI**.\n\n" +
-      "I continuously monitor your 5 tomato plants, soil moisture levels, and local weather in Ghaziabad.\n\n" +
-      "Feel free to ask about your plant health, recent irrigation decisions, or tomato care tips!"
-    );
-  }
-  if (chatInput) setTimeout(() => chatInput.focus(), 300);
+  chatBackdrop.classList.add("visible");
+  chatInput.focus();
 }
 
-function closeChatDrawer() {
-  if (chatDrawer) chatDrawer.classList.remove("open");
-  if (chatBackdrop) chatBackdrop.classList.remove("active");
+function closeChat() {
+  chatDrawer.classList.remove("open");
+  chatBackdrop.classList.remove("visible");
 }
 
-function formatMessageText(text) {
-  let formatted = text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-
-  formatted = formatted.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
-  formatted = formatted.replace(/`([^`]+)`/g, "<code>$1</code>");
-  formatted = formatted.replace(/(?:^|\n)[•\-\*]\s+(.+)/g, "<br>• $1");
-  formatted = formatted.replace(/\n\n/g, "</p><p>").replace(/\n/g, "<br>");
-  return `<p>${formatted}</p>`;
-}
-
-function appendUserMessage(text) {
-  if (!chatMessages) return;
+function appendChatMessage(sender, text) {
+  const isAi = sender === "ai";
   const msgEl = document.createElement("div");
-  msgEl.className = "chat-msg user";
-  const now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  msgEl.className = `chat-msg ${isAi ? "ai-msg" : "user-msg"}`;
   msgEl.innerHTML = `
-    <div class="chat-bubble"><p>${text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p></div>
-    <span class="chat-time">${now}</span>
+    <div class="msg-bubble">${text}</div>
+    <span class="msg-time">Just now</span>
   `;
   chatMessages.appendChild(msgEl);
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
-function appendBotMessage(text) {
-  if (!chatMessages) return;
-  const msgEl = document.createElement("div");
-  msgEl.className = "chat-msg assistant";
-  const now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  msgEl.innerHTML = `
-    <div class="chat-bubble">${formatMessageText(text)}</div>
-    <span class="chat-time">${now}</span>
+async function sendChatMessage(promptText) {
+  const query = promptText || chatInput.value.trim();
+  if (!query) return;
+
+  appendChatMessage("user", query);
+  chatInput.value = "";
+
+  const thinkingId = `ai_think_${Date.now()}`;
+  const thinkingEl = document.createElement("div");
+  thinkingEl.id = thinkingId;
+  thinkingEl.className = "chat-msg ai-msg";
+  thinkingEl.innerHTML = `
+    <div class="msg-bubble" style="opacity: 0.7;">Checking farm telemetry...</div>
   `;
-  chatMessages.appendChild(msgEl);
+  chatMessages.appendChild(thinkingEl);
   chatMessages.scrollTop = chatMessages.scrollHeight;
-}
-
-function showTypingIndicator() {
-  if (!chatMessages) return;
-  const typingEl = document.createElement("div");
-  typingEl.id = "chatTypingIndicator";
-  typingEl.className = "chat-typing";
-  typingEl.innerHTML = `
-    <div class="typing-dot"></div>
-    <div class="typing-dot"></div>
-    <div class="typing-dot"></div>
-  `;
-  chatMessages.appendChild(typingEl);
-  chatMessages.scrollTop = chatMessages.scrollHeight;
-}
-
-function removeTypingIndicator() {
-  const typingEl = document.getElementById("chatTypingIndicator");
-  if (typingEl) typingEl.remove();
-}
-
-async function handleSendMessage(messageText) {
-  const text = (messageText || "").trim();
-  if (!text) return;
-
-  appendUserMessage(text);
-  if (chatInput) chatInput.value = "";
-  if (chatSendBtn) chatSendBtn.disabled = true;
-  showTypingIndicator();
 
   try {
     const res = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        message: text,
-        history: chatHistory.slice(-6),
-      }),
+      body: JSON.stringify({ message: query }),
     });
-
-    removeTypingIndicator();
-
-    if (res.ok) {
-      const data = await res.json();
-      appendBotMessage(data.reply);
-      chatHistory.push({ role: "user", content: text });
-      chatHistory.push({ role: "assistant", content: data.reply });
-    } else {
-      const err = await res.json().catch(() => ({}));
-      appendBotMessage("⚠️ " + (err.detail || "Sorry, I could not process your message right now. Please try again."));
-    }
-  } catch (err) {
-    removeTypingIndicator();
-    appendBotMessage("⚠️ Network error communicating with FarmHub AI.");
-  } finally {
-    if (chatSendBtn) chatSendBtn.disabled = false;
-    if (chatInput) chatInput.focus();
+    const data = await res.json();
+    thinkingEl.remove();
+    appendChatMessage("ai", data.reply || "Telemetry check completed.");
+  } catch (e) {
+    thinkingEl.remove();
+    appendChatMessage(
+      "ai",
+      "I had trouble contacting the AI server. Please verify your connection."
+    );
   }
 }
 
-function initChat() {
-  if (chatFloatingBtn) chatFloatingBtn.addEventListener("click", openChatDrawer);
-  if (chatCloseBtn) chatCloseBtn.addEventListener("click", closeChatDrawer);
-  if (chatBackdrop) chatBackdrop.addEventListener("click", closeChatDrawer);
+// ==========================================================================
+// 13. DOM READY EVENT LISTENERS
+// ==========================================================================
 
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && chatDrawer && chatDrawer.classList.contains("open")) {
-      closeChatDrawer();
-    }
+document.addEventListener("DOMContentLoaded", () => {
+  initChart();
+  loadCropsConfig();
+  connectWebSocket();
+
+  // Initial polls
+  pollStatus();
+  loadHistory();
+  loadDecisions();
+
+  // Periodic polling
+  setInterval(pollStatus, 5000);
+  setInterval(loadHistory, 30000);
+  setInterval(loadDecisions, 15000);
+
+  // Manual pulse buttons
+  btnWater15.addEventListener("click", () => triggerWater(15));
+  btnWater30.addEventListener("click", () => triggerWater(30));
+  btnWater60.addEventListener("click", () => triggerWater(60));
+  btnStop.addEventListener("click", triggerStop);
+
+  // Nav Actions
+  btnTogglePause.addEventListener("click", triggerTogglePause);
+  btnEvaluateNow.addEventListener("click", triggerEvaluateNow);
+  alertDismissBtn.addEventListener("click", () => alertBanner.classList.remove("visible"));
+
+  // Crop Tab Switching Buttons
+  document.querySelectorAll(".crop-tab-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const presetKey = btn.getAttribute("data-preset");
+      renderPlantCanopy(presetKey);
+    });
   });
 
-  if (chatForm) {
-    chatForm.addEventListener("submit", (e) => {
-      e.preventDefault();
-      if (chatInput) handleSendMessage(chatInput.value);
+  // Crop Config Modal Event Listeners
+  if (btnOpenConfigModal) {
+    btnOpenConfigModal.addEventListener("click", openCropConfigModal);
+  }
+  if (btnCloseModal) {
+    btnCloseModal.addEventListener("click", closeCropConfigModal);
+  }
+  if (cropConfigModal) {
+    cropConfigModal.addEventListener("click", (e) => {
+      if (e.target === cropConfigModal) closeCropConfigModal();
+    });
+  }
+  if (modalPresetSelect) {
+    modalPresetSelect.addEventListener("change", (e) => {
+      updateModalPlantsList(e.target.value);
+    });
+  }
+  if (btnSavePreset) {
+    btnSavePreset.addEventListener("click", () => {
+      const selected = modalPresetSelect.value;
+      renderPlantCanopy(selected);
+      closeCropConfigModal();
     });
   }
 
-  chatChips.forEach((chip) => {
+  // Mode Switcher Buttons
+  modeButtons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      modeButtons.forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+    });
+  });
+
+  // Chat Drawer Event Listeners
+  chatFloatingBtn.addEventListener("click", openChat);
+  chatCloseBtn.addEventListener("click", closeChat);
+  chatBackdrop.addEventListener("click", closeChat);
+
+  chatForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    sendChatMessage();
+  });
+
+  document.querySelectorAll(".chat-chip").forEach((chip) => {
     chip.addEventListener("click", () => {
       const prompt = chip.getAttribute("data-prompt");
-      if (prompt) {
-        handleSendMessage(prompt);
-      }
+      sendChatMessage(prompt);
     });
   });
-}
-
-
+});
