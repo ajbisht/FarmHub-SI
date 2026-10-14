@@ -408,7 +408,7 @@ async def trigger_evaluate_now():
         action=verdict.final_action,
         proposed_duration=decision.duration_sec,
         approved_duration=verdict.final_duration_sec,
-        reasoning=f"AI: {decision.reasoning} | Policy: {verdict.reason}",
+        reasoning=(decision.reasoning if verdict.approved else verdict.reason),
         guardrail_verdict=verdict.verdict_type,
         weather_summary=f"{weather.description}, {weather.temp_c}C",
         model_used=decision.model_name,

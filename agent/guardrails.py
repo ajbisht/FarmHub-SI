@@ -62,7 +62,7 @@ class GuardrailEngine:
                 approved=False,
                 final_action="SKIP",
                 final_duration_sec=0,
-                reason="BLOCKED: Drum level is LOW. Pump cannot be operated dry.",
+                reason="Water tank is low. Holding off on watering until tank is refilled.",
                 verdict_type="BLOCKED",
             )
 
@@ -77,7 +77,7 @@ class GuardrailEngine:
                 approved=False,
                 final_action="SKIP",
                 final_duration_sec=0,
-                reason=f"BLOCKED: Moisture ({current_moisture_pct}%) is already above safe limit ({self.max_safe_moisture}%).",
+                reason=f"Soil is already very wet ({current_moisture_pct:.0f}%). Roots need to breathe, no water needed.",
                 verdict_type="BLOCKED",
             )
 
@@ -93,11 +93,12 @@ class GuardrailEngine:
                 logger.warning(
                     f"GUARDRAIL VETO: Cooldown active. Last watering was {hours_since_last:.2f}h ago (minimum gap: {self.min_hours_gap}h)."
                 )
+                remaining_mins = max(1, int((self.min_hours_gap - hours_since_last) * 60))
                 return GuardrailResult(
                     approved=False,
                     final_action="SKIP",
                     final_duration_sec=0,
-                    reason=f"BLOCKED: Cooldown active ({hours_since_last:.1f}h since last water, required: {self.min_hours_gap}h).",
+                    reason=f"Soil is thirsty ({current_moisture_pct:.0f}%), but watered {hours_since_last:.1f}h ago. Waiting {remaining_mins}m before next drink.",
                     verdict_type="BLOCKED",
                 )
 
@@ -112,7 +113,7 @@ class GuardrailEngine:
                 approved=False,
                 final_action="SKIP",
                 final_duration_sec=0,
-                reason=f"BLOCKED: Daily cap reached ({waterings_in_last_24h}/{self.max_daily_waterings} runs in last 24h).",
+                reason=f"Plants received their full water quota today ({waterings_in_last_24h} drinks). Resting till tomorrow.",
                 verdict_type="BLOCKED",
             )
 
@@ -125,7 +126,7 @@ class GuardrailEngine:
                 approved=False,
                 final_action="SKIP",
                 final_duration_sec=0,
-                reason=f"BLOCKED: Rain expected in next 3h ({weather.rain_probability_pct}% chance). Soil not critically dry ({current_moisture_pct}%).",
+                reason=f"Rain expected soon ({weather.rain_probability_pct}% chance). Waiting for rain before watering.",
                 verdict_type="BLOCKED",
             )
 
@@ -138,7 +139,7 @@ class GuardrailEngine:
                 approved=False,
                 final_action="SKIP",
                 final_duration_sec=0,
-                reason=f"BLOCKED: Battery voltage critically low ({battery_v:.1f}V < 11.0V). Pump locked to prevent brownout and battery damage.",
+                reason=f"Battery is low ({battery_v:.1f}V). Pausing pump until battery charges.",
                 verdict_type="BLOCKED",
             )
 
@@ -151,7 +152,7 @@ class GuardrailEngine:
                 approved=False,
                 final_action="SKIP",
                 final_duration_sec=0,
-                reason=f"BLOCKED: Soil sensor raw ADC ({raw_adc}) is out of physical range (500-3600). Sensor fault or wire disconnection suspected.",
+                reason="Soil sensor cable needs checking. Pausing pump for safety.",
                 verdict_type="BLOCKED",
             )
 
@@ -166,7 +167,7 @@ class GuardrailEngine:
                 approved=False,
                 final_action="SKIP",
                 final_duration_sec=0,
-                reason=f"BLOCKED: {consecutive_verification_failures} consecutive waterings failed moisture verification. Suspected pipe disconnect, clog, or leak.",
+                reason="Drip line needs checking for clogs or leaks. Pausing pump for safety.",
                 verdict_type="BLOCKED",
             )
 
@@ -183,12 +184,12 @@ class GuardrailEngine:
             )
             approved_duration = self.max_pump_seconds
             verdict_type = "MODIFIED"
-            reason = f"MODIFIED: Runtime clamped down to safe maximum of {self.max_pump_seconds}s."
+            reason = f"Giving plants a safe {self.max_pump_seconds}s drink."
         elif approved_duration < 10:
             # Minimum useful pump run
             approved_duration = 10
             verdict_type = "MODIFIED"
-            reason = "MODIFIED: Runtime clamped up to minimum effective duration of 10s."
+            reason = "Giving plants a quick 10s drink."
 
         return GuardrailResult(
             approved=True,

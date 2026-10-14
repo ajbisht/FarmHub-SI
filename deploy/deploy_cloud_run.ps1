@@ -63,6 +63,7 @@ Write-Host "Submitting build and deploying to Cloud Run..." -ForegroundColor Gre
     --region $Region `
     --platform managed `
     --allow-unauthenticated `
+    --ingress all `
     --min-instances 0 `
     --max-instances 2 `
     --memory 512Mi `

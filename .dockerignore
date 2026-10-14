@@ -1,0 +1,16 @@
+.git
+.gitignore
+.pytest_cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.env
+farm_irrigation.db
+firebase-debug.log
+assets/
+firmware/
+tests/
+deploy/
+docs/
+*.bak
