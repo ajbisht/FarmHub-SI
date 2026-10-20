@@ -1,5 +1,6 @@
 #pragma once
 
+
 // ============================================================================
 // FarmHub AI — Node 1 (Irrigation & Telemetry) Configuration Template
 // Copy this file to "config.h" and insert your local Wi-Fi and Cloud Run details.
