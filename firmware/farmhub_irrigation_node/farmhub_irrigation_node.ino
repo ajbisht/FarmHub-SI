@@ -6,10 +6,11 @@
 // ============================================================================
 
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <Preferences.h>
 #include <time.h>
-#include "config.h" // Replace with "config.h" for production builds
+#include "config.h"
 
 // --- Global State & Hardware Handles ---
 Preferences prefs;
@@ -171,7 +172,7 @@ bool startWateringCycle(uint8_t duration_sec) {
     if (now_epoch > 100000 && last_watered_epoch > 0) {
         if ((now_epoch - last_watered_epoch) < cooldown_seconds) {
             Serial.printf("[SAFETY] Blocked: In cooldown (%lu sec remaining).\n",
-                          cooldown_seconds - (now_epoch - last_watered_epoch));
+                          (unsigned long)(cooldown_seconds - (now_epoch - last_watered_epoch)));
             return false;
         }
     }
@@ -306,7 +307,7 @@ void sendTelemetryPacket() {
         "\"delivery_verified\":%s,"
         "\"delivery_fault\":%s,"
         "\"rssi_dbm\":%d}",
-        now_epoch,
+        (unsigned long)now_epoch,
         vwc,
         raw_adc,
         tank_ok ? "true" : "false",
@@ -318,7 +319,15 @@ void sendTelemetryPacket() {
         WiFi.RSSI()
     );
 
-    http.begin(FARHUB_API_URL);
+    Serial.printf("\n[Sensors] Soil Moisture: %.1f%% (Raw ADC: %u) | Drum Level: %s\n",
+                  vwc, raw_adc, tank_ok ? "NORMAL (OK)" : "EMPTY (FAULT)");
+    Serial.println("[Cloud] Dispatching telemetry to Cloud Run...");
+
+    WiFiClientSecure secure_client;
+    secure_client.setInsecure(); // Allow Cloud Run HTTPS without manual CA cert bundle
+
+    HTTPClient http;
+    http.begin(secure_client, FARHUB_API_URL);
     http.addHeader("Content-Type", "application/json");
     http.addHeader("Authorization", String("Bearer ") + DEVICE_AUTH_TOKEN);
 
