@@ -9,7 +9,7 @@
 #include <HTTPClient.h>
 #include <Preferences.h>
 #include <time.h>
-#include "config.example.h" // Replace with "config.h" for production builds
+#include "config.h" // Replace with "config.h" for production builds
 
 // --- Global State & Hardware Handles ---
 Preferences prefs;
