@@ -2,6 +2,7 @@
 
 This folder contains the complete, production-ready C++ firmware for the **ESP32 DevKit V1 (30-pin)** controlling the sensors and 12V pump relay.
 
+
 ---
 
 ## 1. Prerequisites (Tools Needed on PC)
