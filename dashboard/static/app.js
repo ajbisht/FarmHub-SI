@@ -503,14 +503,14 @@ function updateUI(state) {
   if (!state) return;
 
   const m = state.soil_moisture_vwc_pct !== undefined ? state.soil_moisture_vwc_pct : state.moisture_pct;
-  if (m !== undefined && m > 0) {
-    updateSoilGauge(m);
+  if (m !== undefined && m !== null && !isNaN(m)) {
+    updateSoilGauge(Number(m));
   }
 
   const adc = state.soil_raw_adc !== undefined ? state.soil_raw_adc : state.raw_adc;
-  if (adc !== undefined && adc > 0) {
+  if (adc !== undefined && adc !== null && !isNaN(adc)) {
     adcValue.textContent = adc;
-    const barWidth = Math.min(100, Math.round((adc / 4095) * 100));
+    const barWidth = Math.min(100, Math.round((Number(adc) / 4095) * 100));
     adcBarFill.style.width = `${barWidth}%`;
   }
 
@@ -563,6 +563,9 @@ function updateUI(state) {
       btnTogglePause.style.borderColor = "var(--border-subtle)";
     }
   }
+
+  // Multi-sensor / Balcony POC update
+  updateBalconyState(state);
 }
 
 // ==========================================================================
@@ -676,7 +679,7 @@ function connectWebSocket() {
     ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data);
-        if (msg.event === "INITIAL_SNAPSHOT" || msg.event === "FIELD_UPDATE") {
+        if (msg.event === "INITIAL_SNAPSHOT" || msg.event === "FIELD_UPDATE" || msg.event === "TELEMETRY_UPDATE" || msg.event === "SIM_UPDATE") {
           updateUI(msg.state);
         }
       } catch (err) {
@@ -934,4 +937,283 @@ document.addEventListener("DOMContentLoaded", () => {
       sendChatMessage(prompt);
     });
   });
+
+  // ==========================================================================
+  // 12. TWO-TAB DECK NAVIGATION & SIMULATOR CONTROLS
+  // ==========================================================================
+
+  const tabBtnSimulator = document.getElementById("tabBtnSimulator");
+  const tabBtnBalcony = document.getElementById("tabBtnBalcony");
+  const tabPaneSimulator = document.getElementById("tabPaneSimulator");
+  const tabPaneBalcony = document.getElementById("tabPaneBalcony");
+
+  function switchDeckTab(tabName) {
+    if (tabName === "simulator") {
+      if (tabBtnSimulator) tabBtnSimulator.classList.add("active");
+      if (tabBtnBalcony) tabBtnBalcony.classList.remove("active");
+      if (tabPaneSimulator) tabPaneSimulator.style.display = "flex";
+      if (tabPaneBalcony) tabPaneBalcony.style.display = "none";
+    } else if (tabName === "balcony-poc") {
+      if (tabBtnBalcony) tabBtnBalcony.classList.add("active");
+      if (tabBtnSimulator) tabBtnSimulator.classList.remove("active");
+      if (tabPaneBalcony) tabPaneBalcony.style.display = "flex";
+      if (tabPaneSimulator) tabPaneSimulator.style.display = "none";
+    }
+  }
+
+  if (tabBtnSimulator) tabBtnSimulator.addEventListener("click", () => switchDeckTab("simulator"));
+  if (tabBtnBalcony) tabBtnBalcony.addEventListener("click", () => switchDeckTab("balcony-poc"));
+
+  // Simulator Control API Proxy caller
+  async function sendSimControl(payload) {
+    try {
+      const res = await fetch("/api/sim/control", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        console.warn("Simulator control message:", data.detail || data.error);
+      }
+    } catch (err) {
+      console.error("Failed to contact simulator control API:", err);
+    }
+  }
+
+  // Sim pot override buttons (Dry / Optimal / Wet)
+  document.querySelectorAll(".sim-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const pot = btn.getAttribute("data-pot");
+      const val = parseFloat(btn.getAttribute("data-val") || "45");
+      sendSimControl({ action: "set-moisture", pot: pot, value: val });
+    });
+  });
+
+  // Sim drum level toggle button
+  const btnSimToggleDrum = document.getElementById("btnSimToggleDrum");
+  if (btnSimToggleDrum) {
+    btnSimToggleDrum.addEventListener("click", () => {
+      const targetLevel = btnSimToggleDrum.getAttribute("data-level") || "LOW";
+      sendSimControl({ action: "set-drum", level: targetLevel });
+    });
+  }
+
+  // Sim simulate water button
+  const btnSimTriggerWater = document.getElementById("btnSimTriggerWater");
+  if (btnSimTriggerWater) {
+    btnSimTriggerWater.addEventListener("click", () => {
+      sendSimControl({ action: "pump", duration_sec: 30 });
+    });
+  }
+
+  // Balcony POC Quick Water buttons
+  document.querySelectorAll(".pot-quick-water-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      triggerWater(15);
+    });
+  });
+
+  const btnBalconyWaterAll = document.getElementById("btnBalconyWaterAll");
+  if (btnBalconyWaterAll) {
+    btnBalconyWaterAll.addEventListener("click", () => {
+      triggerWater(30);
+    });
+  }
+
+  const btnBalconyStop = document.getElementById("btnBalconyStop");
+  if (btnBalconyStop) {
+    btnBalconyStop.addEventListener("click", () => {
+      triggerStop();
+    });
+  }
 });
+
+// ==========================================================================
+// 13. MULTI-SENSOR & BALCONY POC TELEMETRY RENDERER
+// ==========================================================================
+
+function updateBalconyState(state) {
+  if (!state) return;
+
+  const sensors = state.sensors;
+  const isHardware = state.mode === "hardware";
+  const isSim = state.mode === "simulator" || state.sim_running;
+
+  // 1. Update Hardware/Sim Banner
+  const hwBanner = document.getElementById("balconyHwBanner");
+  const hwIcon = document.getElementById("balconyHwIcon");
+  const hwTitle = document.getElementById("balconyHwTitle");
+  const hwDesc = document.getElementById("balconyHwDesc");
+  const hwPill = document.getElementById("balconyHwPill");
+  const hwLiveBadge = document.getElementById("hwLiveBadge");
+  const simLiveBadge = document.getElementById("simLiveBadge");
+  const bpPayloadMode = document.getElementById("bpPayloadMode");
+
+  if (hwBanner) {
+    if (isHardware) {
+      hwBanner.classList.add("hw-connected");
+      if (hwIcon) hwIcon.textContent = "🟢";
+      if (hwTitle) hwTitle.textContent = "ESP32 Field Node Connected & Streaming";
+      if (hwDesc) hwDesc.textContent = "Receiving live physical sensor telemetry directly from your balcony hardware.";
+      if (hwPill) hwPill.textContent = "LIVE HARDWARE";
+      if (hwLiveBadge) {
+        hwLiveBadge.textContent = "HW Online";
+        hwLiveBadge.className = "tab-badge badge-live";
+      }
+      if (simLiveBadge) {
+        simLiveBadge.textContent = "Sim Inactive";
+        simLiveBadge.className = "tab-badge badge-dim";
+      }
+      if (bpPayloadMode) {
+        bpPayloadMode.textContent = "ESP32 Hardware";
+        bpPayloadMode.className = "metric-tag tag-active";
+      }
+    } else {
+      hwBanner.classList.remove("hw-connected");
+      if (hwIcon) hwIcon.textContent = "🔴";
+      if (hwTitle) hwTitle.textContent = "Awaiting Real Hardware Connection";
+      if (hwDesc) hwDesc.textContent = "Currently displaying telemetry from Balcony POC Simulator. Connect your physical ESP32 node to stream live hardware telemetry here.";
+      if (hwPill) hwPill.textContent = "SIMULATED STREAM";
+      if (hwLiveBadge) {
+        hwLiveBadge.textContent = "Awaiting HW";
+        hwLiveBadge.className = "tab-badge badge-dim";
+      }
+      if (simLiveBadge) {
+        simLiveBadge.textContent = "Sim Active";
+        simLiveBadge.className = "tab-badge";
+      }
+      if (bpPayloadMode) {
+        bpPayloadMode.textContent = "Simulator Stream";
+        bpPayloadMode.className = "metric-tag tag-sim";
+      }
+    }
+  }
+
+  // 2. Helper to update a pot's UI in both Sim Control Strip and Balcony Deck
+  function renderPot(potKey, potData, simValId, simBarId, bpMoistId, bpRingId, bpBadgeId, bpAdcId, bpDescId) {
+    if (!potData) return;
+    const m = Number(potData.moisture_pct || 0);
+    const adc = potData.raw_adc !== undefined ? potData.raw_adc : "—";
+    const status = potData.status || (m < 25 ? "DRY" : m > 55 ? "WET" : "OK");
+
+    // Sim Strip Updates
+    const simVal = document.getElementById(simValId);
+    const simBar = document.getElementById(simBarId);
+    if (simVal) simVal.textContent = `${m.toFixed(1)}%`;
+    if (simBar) simBar.style.width = `${Math.min(100, Math.max(0, m))}%`;
+
+    // Balcony Card Updates
+    const bpMoist = document.getElementById(bpMoistId);
+    if (bpMoist) bpMoist.textContent = m.toFixed(1);
+
+    const bpRing = document.getElementById(bpRingId);
+    if (bpRing) {
+      const circ = 339.29; // 2 * PI * 54
+      const offset = circ - (m / 100) * circ;
+      bpRing.style.strokeDashoffset = Math.max(0, Math.min(circ, offset));
+      if (status === "DRY") {
+        bpRing.style.stroke = "#ff7b72";
+      } else if (status === "WET") {
+        bpRing.style.stroke = "#58a6ff";
+      } else {
+        bpRing.style.stroke = "#3fb950";
+      }
+    }
+
+    const bpBadge = document.getElementById(bpBadgeId);
+    if (bpBadge) {
+      if (status === "DRY") {
+        bpBadge.textContent = "THIRSTY";
+        bpBadge.className = "pot-status-badge badge-dry";
+      } else if (status === "WET") {
+        bpBadge.textContent = "WATERLOGGED";
+        bpBadge.className = "pot-status-badge badge-wet";
+      } else {
+        bpBadge.textContent = "OPTIMAL";
+        bpBadge.className = "pot-status-badge badge-optimal";
+      }
+    }
+
+    const bpAdc = document.getElementById(bpAdcId);
+    if (bpAdc) bpAdc.textContent = `${adc} / 4095`;
+
+    const bpDesc = document.getElementById(bpDescId);
+    if (bpDesc) {
+      if (status === "DRY") bpDesc.textContent = "Soil is thirsty, roots need water";
+      else if (status === "WET") bpDesc.textContent = "Soil is saturated, no water needed";
+      else bpDesc.textContent = "Root moisture in sweet spot";
+    }
+  }
+
+  if (sensors) {
+    renderPot("pot1", sensors.pot1, "simPot1Val", "simPot1Bar", "bpPot1Moisture", "bpPot1Ring", "bpPot1Badge", "bpPot1Adc", "bpPot1Desc");
+    renderPot("pot2", sensors.pot2, "simPot2Val", "simPot2Bar", "bpPot2Moisture", "bpPot2Ring", "bpPot2Badge", "bpPot2Adc", "bpPot2Desc");
+    renderPot("pot3", sensors.pot3, "simPot3Val", "simPot3Bar", "bpPot3Moisture", "bpPot3Ring", "bpPot3Badge", "bpPot3Adc", "bpPot3Desc");
+  } else if (state.moisture_pct !== undefined) {
+    // If running single-sensor (legacy/hardware), map primary reading to Pot 1
+    const singleData = {
+      moisture_pct: state.moisture_pct,
+      raw_adc: state.raw_adc,
+      status: state.moisture_pct < 25 ? "DRY" : state.moisture_pct > 55 ? "WET" : "OK"
+    };
+    renderPot("pot1", singleData, "simPot1Val", "simPot1Bar", "bpPot1Moisture", "bpPot1Ring", "bpPot1Badge", "bpPot1Adc", "bpPot1Desc");
+  }
+
+  // 3. Drum Level Updates
+  const drumLevel = state.drum_level || (state.reservoir_level_ok ? "OK" : "LOW");
+  const isDrumLow = drumLevel === "LOW";
+
+  const simDrumStatus = document.getElementById("simDrumStatus");
+  const btnSimToggleDrum = document.getElementById("btnSimToggleDrum");
+  if (simDrumStatus) {
+    if (isDrumLow) {
+      simDrumStatus.textContent = "● LOW (Empty Tank)";
+      simDrumStatus.className = "sim-env-status status-low";
+    } else {
+      simDrumStatus.textContent = "● OK (Adequate)";
+      simDrumStatus.className = "sim-env-status status-ok";
+    }
+  }
+  if (btnSimToggleDrum) {
+    if (isDrumLow) {
+      btnSimToggleDrum.textContent = "Refill Tank to OK";
+      btnSimToggleDrum.setAttribute("data-level", "OK");
+    } else {
+      btnSimToggleDrum.textContent = "Toggle Tank to LOW";
+      btnSimToggleDrum.setAttribute("data-level", "LOW");
+    }
+  }
+
+  const bpDrumBadge = document.getElementById("bpDrumBadge");
+  const bpDrumLevelText = document.getElementById("bpDrumLevelText");
+  if (bpDrumBadge) {
+    bpDrumBadge.textContent = isDrumLow ? "LOW WATER" : "NORMAL";
+    bpDrumBadge.className = isDrumLow ? "status-pill pill-warning" : "status-pill pill-optimal";
+  }
+  if (bpDrumLevelText) {
+    bpDrumLevelText.textContent = isDrumLow ? "LOW (Float Triggered - Cutoff Active)" : "HIGH (Tank Adequate)";
+  }
+
+  // 4. Pump Status
+  const pumpState = state.pump_state || (state.pump_running ? "RUNNING" : "IDLE");
+  const bpPumpBadge = document.getElementById("bpPumpBadge");
+  if (bpPumpBadge) {
+    bpPumpBadge.textContent = pumpState;
+    bpPumpBadge.className = pumpState === "RUNNING" ? "status-pill pill-active-pump" : "status-pill pill-idle";
+  }
+
+  // 5. Battery & RSSI
+  if (state.battery_v !== undefined) {
+    const battStr = `${Number(state.battery_v).toFixed(1)}V`;
+    const simBatt = document.getElementById("simBatteryVal");
+    if (simBatt) simBatt.textContent = battStr;
+    const bpBatt = document.getElementById("bpBatteryVal");
+    if (bpBatt) bpBatt.textContent = `${battStr} Li-ion`;
+  }
+  if (state.rssi_dbm !== undefined) {
+    const bpRssi = document.getElementById("bpRssiVal");
+    if (bpRssi) bpRssi.textContent = `${state.rssi_dbm} dBm`;
+  }
+}
+

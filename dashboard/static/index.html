@@ -80,8 +80,107 @@
       </div>
     </header>
 
-    <!-- Crop Selector Bar -->
-    <section class="crop-bar">
+    <!-- Master Deck Tabs Navigation -->
+    <nav class="deck-tabs-nav" id="deckTabsNav">
+      <button class="deck-tab-btn active" id="tabBtnSimulator" data-tab="simulator">
+        <span class="tab-icon">🧪</span>
+        <span class="tab-label">Field &amp; AI Simulator</span>
+        <span class="tab-badge" id="simLiveBadge">Sim Active</span>
+      </button>
+      <button class="deck-tab-btn" id="tabBtnBalcony" data-tab="balcony-poc">
+        <span class="tab-icon">🌿</span>
+        <span class="tab-label">Balcony POC (3 Pots)</span>
+        <span class="tab-badge badge-dim" id="hwLiveBadge">Awaiting HW</span>
+      </button>
+    </nav>
+
+    <!-- ================= TAB 1: FIELD & SIMULATOR PANE ================= -->
+    <div class="deck-tab-pane active" id="tabPaneSimulator">
+
+      <!-- Virtual Balcony Simulator Controls Strip -->
+      <section class="sim-control-panel card-sim" id="simControlPanel">
+        <div class="sim-panel-header">
+          <div class="sim-header-title">
+            <span class="sim-badge-icon">🧪</span>
+            <div>
+              <h2 class="sim-title">Virtual Balcony Simulator Controls</h2>
+              <p class="sim-subtitle">Inject live soil conditions, water levels &amp; faults into the autonomous agent loop</p>
+            </div>
+          </div>
+          <div class="sim-status-hud">
+            <span class="sim-pulse-dot" id="simPulseDot"></span>
+            <span id="simStatusText">Simulator Active (5s cycle)</span>
+          </div>
+        </div>
+
+        <div class="sim-pots-control-grid">
+          <!-- Pot 1 Sim Controls -->
+          <div class="sim-pot-box" id="simPotBox1">
+            <div class="sim-pot-top">
+              <span class="sim-pot-name">🌱 Pot 1: Mooli (Radish)</span>
+              <span class="sim-pot-val font-mono" id="simPot1Val">45.0%</span>
+            </div>
+            <div class="sim-pot-bar-wrap">
+              <div class="sim-pot-bar" id="simPot1Bar" style="width: 45%;"></div>
+            </div>
+            <div class="sim-pot-actions">
+              <button class="sim-btn sim-dry-btn" data-pot="pot1" data-val="12">📉 Make Dry (12%)</button>
+              <button class="sim-btn sim-opt-btn" data-pot="pot1" data-val="45">⚖️ Optimal (45%)</button>
+              <button class="sim-btn sim-wet-btn" data-pot="pot1" data-val="75">💧 Make Wet (75%)</button>
+            </div>
+          </div>
+
+          <!-- Pot 2 Sim Controls -->
+          <div class="sim-pot-box" id="simPotBox2">
+            <div class="sim-pot-top">
+              <span class="sim-pot-name">🌿 Pot 2: Methi (Fenugreek)</span>
+              <span class="sim-pot-val font-mono" id="simPot2Val">50.0%</span>
+            </div>
+            <div class="sim-pot-bar-wrap">
+              <div class="sim-pot-bar" id="simPot2Bar" style="width: 50%;"></div>
+            </div>
+            <div class="sim-pot-actions">
+              <button class="sim-btn sim-dry-btn" data-pot="pot2" data-val="15">📉 Make Dry (15%)</button>
+              <button class="sim-btn sim-opt-btn" data-pot="pot2" data-val="48">⚖️ Optimal (48%)</button>
+              <button class="sim-btn sim-wet-btn" data-pot="pot2" data-val="75">💧 Make Wet (75%)</button>
+            </div>
+          </div>
+
+          <!-- Pot 3 Sim Controls -->
+          <div class="sim-pot-box" id="simPotBox3">
+            <div class="sim-pot-top">
+              <span class="sim-pot-name">🪴 Pot 3: Balcony Pot #3</span>
+              <span class="sim-pot-val font-mono" id="simPot3Val">40.0%</span>
+            </div>
+            <div class="sim-pot-bar-wrap">
+              <div class="sim-pot-bar" id="simPot3Bar" style="width: 40%;"></div>
+            </div>
+            <div class="sim-pot-actions">
+              <button class="sim-btn sim-dry-btn" data-pot="pot3" data-val="14">📉 Make Dry (14%)</button>
+              <button class="sim-btn sim-opt-btn" data-pot="pot3" data-val="42">⚖️ Optimal (42%)</button>
+              <button class="sim-btn sim-wet-btn" data-pot="pot3" data-val="72">💧 Make Wet (72%)</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="sim-env-toolbar">
+          <div class="sim-env-item">
+            <span class="sim-env-label">Water Drum:</span>
+            <span class="sim-env-status status-ok" id="simDrumStatus">● OK (Adequate)</span>
+            <button class="sim-toggle-btn" id="btnSimToggleDrum" data-level="LOW">Toggle Tank to LOW</button>
+          </div>
+          <div class="sim-env-item">
+            <span class="sim-env-label">Virtual Battery:</span>
+            <span class="sim-env-mono" id="simBatteryVal">12.2V</span>
+          </div>
+          <div class="sim-env-item">
+            <button class="sim-action-btn" id="btnSimTriggerWater">💦 Simulate Pump Cycle (30s)</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Crop Selector Bar -->
+      <section class="crop-bar">
       <div class="crop-bar-label">
         <span class="crop-icon">🌱</span>
         <span class="crop-bar-title">Monitored Crop:</span>
@@ -544,6 +643,277 @@
       </section>
 
     </main>
+    </div><!-- End #tabPaneSimulator -->
+
+    <!-- ================= TAB 2: BALCONY POC PANE (3 POTS + DRUM) ================= -->
+    <div class="deck-tab-pane" id="tabPaneBalcony" style="display: none;">
+
+      <!-- Physical Hardware Status Banner -->
+      <div class="balcony-hw-banner" id="balconyHwBanner">
+        <div class="hw-banner-icon" id="balconyHwIcon">🔴</div>
+        <div class="hw-banner-body">
+          <h3 id="balconyHwTitle">Awaiting Real Hardware Connection</h3>
+          <p id="balconyHwDesc">Currently displaying telemetry from <strong>Balcony POC Simulator</strong>. When your physical ESP32 node is powered on and connects to Wi-Fi, this banner will switch to live hardware stream automatically.</p>
+        </div>
+        <span class="hw-banner-pill" id="balconyHwPill">SIMULATED STREAM</span>
+      </div>
+
+      <!-- Balcony Spec Strip -->
+      <div class="balcony-spec-strip">
+        <div class="balcony-spec-item">
+          <span class="spec-label">Field Deployment</span>
+          <span class="spec-value">East-Facing Balcony (3 Pots)</span>
+        </div>
+        <div class="balcony-spec-item">
+          <span class="spec-label">Sensor Architecture</span>
+          <span class="spec-value">3x Capacitive Soil Probes (V1.2)</span>
+        </div>
+        <div class="balcony-spec-item">
+          <span class="spec-label">Water Storage</span>
+          <span class="spec-value">20L Drum + Vertical Float Switch</span>
+        </div>
+        <div class="balcony-spec-item">
+          <span class="spec-label">Pump Subsystem</span>
+          <span class="spec-value">12V DC Submersible • Relay Pin 26</span>
+        </div>
+      </div>
+
+      <!-- 3 Balcony Pots Grid -->
+      <div class="balcony-pots-deck">
+
+        <!-- Pot 1: Mooli -->
+        <div class="balcony-pot-card" id="balconyCardPot1">
+          <div class="pot-card-header">
+            <div class="pot-identity">
+              <span class="pot-icon-pill">🌱</span>
+              <div>
+                <h3 class="pot-name">Pot 1: Mooli (Radish)</h3>
+                <span class="pot-variety">Raphanus sativus • Taproot ~15cm</span>
+              </div>
+            </div>
+            <span class="pot-status-badge badge-optimal" id="bpPot1Badge">OPTIMAL</span>
+          </div>
+
+          <div class="pot-gauge-section">
+            <div class="pot-ring-wrapper">
+              <svg class="pot-ring-svg" viewBox="0 0 140 140">
+                <circle class="pot-ring-track" cx="70" cy="70" r="54" />
+                <circle class="pot-ring-fill" id="bpPot1Ring" cx="70" cy="70" r="54" />
+              </svg>
+              <div class="pot-ring-content">
+                <span class="pot-ring-val mono-huge" id="bpPot1Moisture">45.0</span>
+                <span class="pot-ring-unit">% VWC</span>
+              </div>
+            </div>
+            <div class="pot-details-list">
+              <div class="pot-detail-row">
+                <span class="detail-name">Target Range</span>
+                <span class="detail-val">25% – 55% VWC</span>
+              </div>
+              <div class="pot-detail-row">
+                <span class="detail-name">Raw Signal ADC</span>
+                <span class="detail-val mono" id="bpPot1Adc">1820 / 4095</span>
+              </div>
+              <div class="pot-detail-row">
+                <span class="detail-name">Drip Emitter</span>
+                <span class="detail-val">Adjustable 2.0 L/h</span>
+              </div>
+              <div class="pot-detail-row">
+                <span class="detail-name">Soil Status</span>
+                <span class="detail-val" id="bpPot1Desc">Healthy root water</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="pot-card-footer">
+            <button class="pot-quick-water-btn" data-pot="pot1">💦 Water Pot 1 (15s)</button>
+          </div>
+        </div>
+
+        <!-- Pot 2: Methi -->
+        <div class="balcony-pot-card" id="balconyCardPot2">
+          <div class="pot-card-header">
+            <div class="pot-identity">
+              <span class="pot-icon-pill">🌿</span>
+              <div>
+                <h3 class="pot-name">Pot 2: Methi (Fenugreek)</h3>
+                <span class="pot-variety">Trigonella foenum-graecum • Shallow ~10cm</span>
+              </div>
+            </div>
+            <span class="pot-status-badge badge-optimal" id="bpPot2Badge">OPTIMAL</span>
+          </div>
+
+          <div class="pot-gauge-section">
+            <div class="pot-ring-wrapper">
+              <svg class="pot-ring-svg" viewBox="0 0 140 140">
+                <circle class="pot-ring-track" cx="70" cy="70" r="54" />
+                <circle class="pot-ring-fill" id="bpPot2Ring" cx="70" cy="70" r="54" />
+              </svg>
+              <div class="pot-ring-content">
+                <span class="pot-ring-val mono-huge" id="bpPot2Moisture">50.0</span>
+                <span class="pot-ring-unit">% VWC</span>
+              </div>
+            </div>
+            <div class="pot-details-list">
+              <div class="pot-detail-row">
+                <span class="detail-name">Target Range</span>
+                <span class="detail-val">30% – 60% VWC</span>
+              </div>
+              <div class="pot-detail-row">
+                <span class="detail-name">Raw Signal ADC</span>
+                <span class="detail-val mono" id="bpPot2Adc">1650 / 4095</span>
+              </div>
+              <div class="pot-detail-row">
+                <span class="detail-name">Drip Emitter</span>
+                <span class="detail-val">Adjustable 1.5 L/h</span>
+              </div>
+              <div class="pot-detail-row">
+                <span class="detail-name">Soil Status</span>
+                <span class="detail-val" id="bpPot2Desc">Healthy root water</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="pot-card-footer">
+            <button class="pot-quick-water-btn" data-pot="pot2">💦 Water Pot 2 (15s)</button>
+          </div>
+        </div>
+
+        <!-- Pot 3: TBD -->
+        <div class="balcony-pot-card" id="balconyCardPot3">
+          <div class="pot-card-header">
+            <div class="pot-identity">
+              <span class="pot-icon-pill">🪴</span>
+              <div>
+                <h3 class="pot-name">Pot 3: Balcony Pot #3</h3>
+                <span class="pot-variety">Balcony Container Slot (TBD)</span>
+              </div>
+            </div>
+            <span class="pot-status-badge badge-optimal" id="bpPot3Badge">OPTIMAL</span>
+          </div>
+
+          <div class="pot-gauge-section">
+            <div class="pot-ring-wrapper">
+              <svg class="pot-ring-svg" viewBox="0 0 140 140">
+                <circle class="pot-ring-track" cx="70" cy="70" r="54" />
+                <circle class="pot-ring-fill" id="bpPot3Ring" cx="70" cy="70" r="54" />
+              </svg>
+              <div class="pot-ring-content">
+                <span class="pot-ring-val mono-huge" id="bpPot3Moisture">40.0</span>
+                <span class="pot-ring-unit">% VWC</span>
+              </div>
+            </div>
+            <div class="pot-details-list">
+              <div class="pot-detail-row">
+                <span class="detail-name">Target Range</span>
+                <span class="detail-val">25% – 55% VWC</span>
+              </div>
+              <div class="pot-detail-row">
+                <span class="detail-name">Raw Signal ADC</span>
+                <span class="detail-val mono" id="bpPot3Adc">1940 / 4095</span>
+              </div>
+              <div class="pot-detail-row">
+                <span class="detail-name">Drip Emitter</span>
+                <span class="detail-val">Adjustable 2.0 L/h</span>
+              </div>
+              <div class="pot-detail-row">
+                <span class="detail-name">Soil Status</span>
+                <span class="detail-val" id="bpPot3Desc">Healthy root water</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="pot-card-footer">
+            <button class="pot-quick-water-btn" data-pot="pot3">💦 Water Pot 3 (15s)</button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Balcony Subsystems Grid -->
+      <div class="balcony-subsystems-grid">
+
+        <!-- Water Drum Reservoir -->
+        <div class="subsystem-card">
+          <div class="subsystem-header">
+            <div class="subsystem-icon">🛢️</div>
+            <div>
+              <h4>20L Water Drum Reservoir</h4>
+              <p>Gravity feed &amp; float sensor</p>
+            </div>
+            <span class="status-pill pill-optimal" id="bpDrumBadge">NORMAL</span>
+          </div>
+          <div class="subsystem-content">
+            <div class="drum-metric-row">
+              <span class="metric-label">Float Switch State:</span>
+              <span class="metric-value font-mono" id="bpDrumLevelText">HIGH (Tank Adequate)</span>
+            </div>
+            <div class="drum-metric-row">
+              <span class="metric-label">Dry-Run Protection:</span>
+              <span class="metric-tag tag-active">ARMED &amp; SAFE</span>
+            </div>
+            <div class="drum-metric-row">
+              <span class="metric-label">Physical Sensor:</span>
+              <span class="metric-desc">Vertical reed float switch on GPIO 25</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Submersible Pump & Manifold -->
+        <div class="subsystem-card">
+          <div class="subsystem-header">
+            <div class="subsystem-icon">⚡</div>
+            <div>
+              <h4>Submersible 12V DC Pump</h4>
+              <p>Relay control &amp; guardrails</p>
+            </div>
+            <span class="status-pill pill-idle" id="bpPumpBadge">IDLE</span>
+          </div>
+          <div class="subsystem-content">
+            <div class="drum-metric-row">
+              <span class="metric-label">Pump Circuit:</span>
+              <span class="metric-value font-mono">1-Ch Opto-Isolated Relay (GPIO 26)</span>
+            </div>
+            <div class="drum-metric-row">
+              <span class="metric-label">Safety Cutoff:</span>
+              <span class="metric-value font-mono">45s Max Burst Limit</span>
+            </div>
+            <div class="subsystem-actions">
+              <button class="btn btn-water-action" id="btnBalconyWaterAll">💦 Water All Pots (30s)</button>
+              <button class="btn btn-stop-action" id="btnBalconyStop">🛑 Emergency STOP</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Power & Edge Node Telemetry -->
+        <div class="subsystem-card">
+          <div class="subsystem-header">
+            <div class="subsystem-icon">🔋</div>
+            <div>
+              <h4>ESP32 &amp; Power Health</h4>
+              <p>Field node electronics</p>
+            </div>
+            <span class="status-pill pill-optimal" id="bpPowerBadge">12.2V HEALTHY</span>
+          </div>
+          <div class="subsystem-content">
+            <div class="drum-metric-row">
+              <span class="metric-label">Supply Voltage:</span>
+              <span class="metric-value font-mono" id="bpBatteryVal">12.2V Li-ion</span>
+            </div>
+            <div class="drum-metric-row">
+              <span class="metric-label">Wi-Fi Signal:</span>
+              <span class="metric-value font-mono" id="bpRssiVal">-58 dBm (Strong)</span>
+            </div>
+            <div class="drum-metric-row">
+              <span class="metric-label">Payload Mode:</span>
+              <span class="metric-tag tag-sim" id="bpPayloadMode">Simulator Stream</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div><!-- End #tabPaneBalcony -->
 
     <!-- Footer -->
     <footer class="app-footer">

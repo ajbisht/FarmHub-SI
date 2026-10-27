@@ -15,9 +15,13 @@
 #define DEVICE_AUTH_TOKEN   "farmhub-edge-node-01-token"
 
 // 3. Hardware Pin Mapping (ESP32 30-Pin CP2102)
-#define PIN_SOIL_ADC        34    // ADC1_CH6 (Safe with Wi-Fi active)
+// NOTE: Analog inputs MUST use ADC1 pins (ADC2 is disabled when Wi-Fi is active)
+#define PIN_SOIL_POT1       34    // Pot 1: Mooli / Radish (ADC1_CH6)
+#define PIN_SOIL_POT2       32    // Pot 2: Methi / Fenugreek (ADC1_CH4)
+#define PIN_SOIL_POT3       33    // Pot 3: Balcony Pot #3 TBD (ADC1_CH5)
+#define PIN_SOIL_ADC        34    // Legacy alias for primary sensor
 #define PIN_FLOAT_SWITCH    18    // Internal Pull-Up, connects to GND when water normal
-#define PIN_RELAY           25    // Active-LOW trigger for 5V Relay module
+#define PIN_RELAY           25    // Active-LOW trigger for 5V Relay module (Controls 12V Pump)
 #define PIN_STATUS_LED       2    // Onboard blue LED for status indication
 
 // 4. Capacitive Soil Moisture Calibration (12-bit ADC: 0 - 4095)

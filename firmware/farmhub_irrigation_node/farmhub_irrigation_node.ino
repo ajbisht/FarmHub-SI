@@ -58,9 +58,12 @@ void setup() {
     delay(200);
     Serial.println("\n[FarmHub] Booting Node 1 Irrigation Controller...");
 
-    // Configure 12-bit ADC on ADC1 (GPIO 34)
+    // Configure 12-bit ADC on ADC1 pins (Safe with active Wi-Fi)
     analogReadResolution(12);
     analogSetAttenuation(ADC_11db); // Full 0 - 3.3V range
+    pinMode(PIN_SOIL_POT1, INPUT);
+    pinMode(PIN_SOIL_POT2, INPUT);
+    pinMode(PIN_SOIL_POT3, INPUT);
 
     // 2. Initialize Non-Volatile Storage (NVS)
     prefs.begin("farmhub_node", false);
@@ -126,10 +129,10 @@ void loop() {
 // ============================================================================
 // 3. SENSOR READING & MULTI-SAMPLE ADC FILTERING
 // ============================================================================
-uint16_t readFilteredSoilADC() {
+uint16_t readFilteredSoilADC(uint8_t pin = PIN_SOIL_POT1) {
     uint32_t adc_sum = 0;
     for (int i = 0; i < SAMPLE_COUNT; i++) {
-        adc_sum += analogRead(PIN_SOIL_ADC);
+        adc_sum += analogRead(pin);
         delay(5);
     }
     return (uint16_t)(adc_sum / SAMPLE_COUNT);
@@ -279,8 +282,20 @@ void sendTelemetryPacket() {
         if (WiFi.status() != WL_CONNECTED) return;
     }
 
-    uint16_t raw_adc = readFilteredSoilADC();
-    float vwc = calculateSoilVWC(raw_adc);
+    // Sample all 3 balcony pots
+    uint16_t raw_pot1 = readFilteredSoilADC(PIN_SOIL_POT1);
+    float vwc_pot1 = calculateSoilVWC(raw_pot1);
+
+    uint16_t raw_pot2 = readFilteredSoilADC(PIN_SOIL_POT2);
+    float vwc_pot2 = calculateSoilVWC(raw_pot2);
+
+    uint16_t raw_pot3 = readFilteredSoilADC(PIN_SOIL_POT3);
+    float vwc_pot3 = calculateSoilVWC(raw_pot3);
+
+    const char* status_pot1 = (vwc_pot1 < 25.0) ? "DRY" : (vwc_pot1 > 55.0 ? "WET" : "OK");
+    const char* status_pot2 = (vwc_pot2 < 30.0) ? "DRY" : (vwc_pot2 > 60.0 ? "WET" : "OK");
+    const char* status_pot3 = (vwc_pot3 < 25.0) ? "DRY" : (vwc_pot3 > 55.0 ? "WET" : "OK");
+
     bool tank_ok = isReservoirOk();
     time_t now_epoch = time(nullptr);
 
@@ -293,11 +308,13 @@ void sendTelemetryPacket() {
         }
     }
 
-    // Build JSON packet
-    char payload[512];
+    // Build multi-sensor JSON packet (compatible with both Cloud Run agent and Local Dashboard)
+    char payload[768];
     snprintf(payload, sizeof(payload),
         "{\"device_id\":\"farmhub-node-01\","
+        "\"node_id\":\"farmhub-balcony-node-01\","
         "\"timestamp\":%lu,"
+        "\"mode\":\"hardware\","
         "\"soil_moisture_vwc_pct\":%.1f,"
         "\"soil_raw_adc\":%u,"
         "\"reservoir_level_ok\":%s,"
@@ -306,21 +323,32 @@ void sendTelemetryPacket() {
         "\"total_cycles_today\":%u,"
         "\"delivery_verified\":%s,"
         "\"delivery_fault\":%s,"
-        "\"rssi_dbm\":%d}",
+        "\"rssi_dbm\":%d,"
+        "\"sensors\":{"
+          "\"pot1\":{\"plant\":\"Mooli (Radish)\",\"moisture_pct\":%.1f,\"raw_adc\":%u,\"status\":\"%s\"},"
+          "\"pot2\":{\"plant\":\"Methi (Fenugreek)\",\"moisture_pct\":%.1f,\"raw_adc\":%u,\"status\":\"%s\"},"
+          "\"pot3\":{\"plant\":\"Pot 3 — TBD\",\"moisture_pct\":%.1f,\"raw_adc\":%u,\"status\":\"%s\"}"
+        "},"
+        "\"drum\":{\"level\":\"%s\",\"level_ok\":%s}}",
         (unsigned long)now_epoch,
-        vwc,
-        raw_adc,
+        vwc_pot1,
+        raw_pot1,
         tank_ok ? "true" : "false",
         (current_pump_state == PUMP_WATERING) ? "true" : "false",
         cooldown_rem,
         total_cycles_today,
         delivery_verified ? "true" : "false",
         delivery_fault ? "true" : "false",
-        WiFi.RSSI()
+        WiFi.RSSI(),
+        vwc_pot1, raw_pot1, status_pot1,
+        vwc_pot2, raw_pot2, status_pot2,
+        vwc_pot3, raw_pot3, status_pot3,
+        tank_ok ? "OK" : "LOW",
+        tank_ok ? "true" : "false"
     );
 
-    Serial.printf("\n[Sensors] Soil Moisture: %.1f%% (Raw ADC: %u) | Drum Level: %s\n",
-                  vwc, raw_adc, tank_ok ? "NORMAL (OK)" : "EMPTY (FAULT)");
+    Serial.printf("\n[Sensors] Pot1 (Mooli): %.1f%% | Pot2 (Methi): %.1f%% | Pot3: %.1f%% | Drum: %s\n",
+                  vwc_pot1, vwc_pot2, vwc_pot3, tank_ok ? "NORMAL (OK)" : "EMPTY (FAULT)");
     Serial.println("[Cloud] Dispatching telemetry to Cloud Run...");
 
     WiFiClientSecure secure_client;

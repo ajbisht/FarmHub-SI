@@ -50,6 +50,7 @@ class DashboardMQTTBridge:
         self.db = FarmDatabase()
         self.loop: Optional[asyncio.AbstractEventLoop] = None
         self.active_connections: Set[WebSocket] = set()
+        self.pending_command: Optional[str] = None
 
         # Initialize from database if records already exist
         latest_db = self.db.get_latest_reading()
@@ -62,6 +63,10 @@ class DashboardMQTTBridge:
                 "pump_state": "IDLE",
                 "last_updated": latest_db.get("timestamp"),
                 "automation_paused": False,
+                # Multi-sensor balcony fields (populated by simulator)
+                "mode": "hardware",
+                "sensors": None,
+                "sim_running": False,
             }
         else:
             self.latest_state: Dict[str, Any] = {
@@ -72,6 +77,10 @@ class DashboardMQTTBridge:
                 "pump_state": "IDLE",
                 "last_updated": None,
                 "automation_paused": False,
+                # Multi-sensor balcony fields (populated by simulator)
+                "mode": "hardware",
+                "sensors": None,
+                "sim_running": False,
             }
 
         client_id = f"dashboard_bridge_{random.randint(1000, 9999)}"
@@ -277,6 +286,106 @@ async def websocket_endpoint(websocket: WebSocket):
         bridge.unregister(websocket)
 
 
+@app.post("/api/telemetry")
+async def ingest_telemetry(payload: Dict[str, Any]):
+    """Ingest live telemetry from ESP32 Edge Node or Balcony Simulator."""
+    mode = payload.get("mode", "hardware")
+    moisture = float(payload.get("soil_moisture_vwc_pct", 0.0))
+    raw_adc = payload.get("soil_raw_adc")
+    drum_ok = payload.get("reservoir_level_ok", True)
+    drum_str = "OK" if drum_ok else "LOW"
+    pump_running = payload.get("pump_running", False)
+
+    # 1. Update live in-memory bridge state (common fields)
+    bridge.latest_state.update({
+        "moisture_pct": moisture,
+        "soil_moisture_vwc_pct": moisture,
+        "raw_adc": raw_adc,
+        "soil_raw_adc": raw_adc,
+        "drum_level": drum_str,
+        "reservoir_level_ok": drum_ok,
+        "pump_state": "RUNNING" if pump_running else "IDLE",
+        "last_updated": datetime.now(timezone.utc).isoformat(),
+        "rssi_dbm": payload.get("rssi_dbm", 0),
+        "battery_v": float(payload.get("battery_v", bridge.latest_state.get("battery_v", 12.0)) or 12.0),
+        "mode": mode,
+        "sim_running": mode == "simulator",
+    })
+
+    # 2. Extended multi-sensor state (simulator / balcony POC)
+    if "sensors" in payload:
+        bridge.latest_state["sensors"] = payload["sensors"]
+        drum_info = payload.get("drum", {})
+        bridge.latest_state["drum_level"] = drum_info.get("level", drum_str)
+        logger.info(
+            f"[{mode.upper()}] pot1={payload['sensors'].get('pot1',{}).get('moisture_pct','?')}% "
+            f"pot2={payload['sensors'].get('pot2',{}).get('moisture_pct','?')}% "
+            f"pot3={payload['sensors'].get('pot3',{}).get('moisture_pct','?')}% "
+            f"drum={bridge.latest_state['drum_level']}"
+        )
+    else:
+        # Legacy single-sensor hardware — clear stale multi-sensor dict
+        bridge.latest_state["sensors"] = None
+        logger.info(f"[{mode.upper()}] moisture={moisture}%, raw_adc={raw_adc}, drum={drum_str}")
+
+    # 3. Persist primary sensor reading to SQLite
+    try:
+        bridge.db.record_reading(
+            moisture_pct=moisture,
+            raw_adc=raw_adc,
+            drum_level=drum_str,
+            battery_v=float(bridge.latest_state.get("battery_v", 12.0) or 12.0),
+        )
+    except Exception as e:
+        logger.error(f"Error persisting telemetry to DB: {e}")
+
+    # 4. Broadcast real-time update to all connected dashboard WebSockets
+    event_type = "SIM_UPDATE" if mode == "simulator" else "FIELD_UPDATE"
+    await bridge.broadcast_json({
+        "event": event_type,
+        "state": bridge.latest_state,
+    })
+
+    cmd = "IDLE"
+    if getattr(bridge, "pending_command", None):
+        cmd = bridge.pending_command
+        bridge.pending_command = None
+        logger.info(f"Dispatched pending command to node: {cmd}")
+
+    return {
+        "status": "success",
+        "message": "Telemetry received",
+        "command": cmd
+    }
+
+
+@app.post("/api/sim/control")
+async def sim_control(payload: Dict[str, Any]):
+    """Proxy dashboard UI sim control commands to the local balcony simulator control API."""
+    sim_port = int(os.getenv("SIM_CONTROL_PORT", "5001"))
+    action = payload.get("action", "")
+    try:
+        if action == "set-moisture":
+            url = f"http://localhost:{sim_port}/sim/set-moisture"
+        elif action == "set-drum":
+            url = f"http://localhost:{sim_port}/sim/set-drum"
+        elif action == "pump":
+            url = f"http://localhost:{sim_port}/sim/pump"
+        elif action == "state":
+            url = f"http://localhost:{sim_port}/sim/state"
+            resp = httpx.get(url, timeout=3)
+            return resp.json()
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown sim action: {action}")
+
+        resp = httpx.post(url, json=payload, timeout=3)
+        return resp.json()
+    except httpx.ConnectError:
+        raise HTTPException(status_code=503, detail="Simulator not running. Start balcony_sim.py first.")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/status")
 async def get_status():
     latest_db_reading = bridge.db.get_latest_reading()
@@ -322,14 +431,25 @@ async def override_water(duration_sec: int = 30):
         initial_moisture=current_moisture,
     )
 
+    bridge.pending_command = "IRRIGATE_CYCLE"
+    bridge.latest_state["pump_state"] = "RUNNING"
+    await bridge.broadcast_json({
+        "event": "FIELD_UPDATE",
+        "state": bridge.latest_state,
+    })
     bridge.send_pump_command("RUN", duration_sec, "Manual Override from Dashboard")
     return {"status": "SUCCESS", "message": f"Watering initiated for {duration_sec}s."}
 
 
 @app.post("/api/override/stop")
 async def override_stop():
+    bridge.pending_command = "STOP"
     bridge.send_pump_command("STOP", 0, "Emergency Stop from Dashboard")
     bridge.latest_state["pump_state"] = "IDLE"
+    await bridge.broadcast_json({
+        "event": "FIELD_UPDATE",
+        "state": bridge.latest_state,
+    })
     return {"status": "SUCCESS", "message": "Emergency STOP command transmitted."}
 
 

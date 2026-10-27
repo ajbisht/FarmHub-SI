@@ -62,6 +62,20 @@
         { "id": "p2", "name": "Terrace Bed B (Center)", "variety": "Medicinal Rhizome", "icon": "🌿", "moisture_offset": 1.2 },
         { "id": "p3", "name": "Terrace Bed C (Stream-Side)", "variety": "Medicinal Rhizome", "icon": "🌿", "moisture_offset": -0.7 }
       ]
+    },
+    "balcony_poc": {
+      "id": "balcony_poc",
+      "title": "Balcony 3-Pot Pilot",
+      "badge": "3 Pots",
+      "icon": "🌱",
+      "description": "Balcony POC: Mooli, Methi, and Pot 3 with Independent Drip Feed",
+      "target_moisture_min": 25,
+      "target_moisture_max": 55,
+      "plants": [
+        { "id": "pot1", "name": "Mooli (Radish)", "variety": "Raphanus sativus", "icon": "🌱", "moisture_offset": 0.0 },
+        { "id": "pot2", "name": "Methi (Fenugreek)", "variety": "Trigonella foenum-graecum", "icon": "🌿", "moisture_offset": 0.0 },
+        { "id": "pot3", "name": "Pot 3 — TBD", "variety": "Balcony Container", "icon": "🪴", "moisture_offset": 0.0 }
+      ]
     }
   }
 }
