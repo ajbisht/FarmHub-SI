@@ -5,6 +5,7 @@ import os
 import random
 import sys
 import threading
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -64,9 +65,11 @@ class DashboardMQTTBridge:
                 "last_updated": latest_db.get("timestamp"),
                 "automation_paused": False,
                 # Multi-sensor balcony fields (populated by simulator)
-                "mode": "hardware",
+                "mode": "offline",
                 "sensors": None,
                 "sim_running": False,
+                "last_rx_timestamp": None,
+                "hw_online": False,
             }
         else:
             self.latest_state: Dict[str, Any] = {
@@ -78,9 +81,11 @@ class DashboardMQTTBridge:
                 "last_updated": None,
                 "automation_paused": False,
                 # Multi-sensor balcony fields (populated by simulator)
-                "mode": "hardware",
+                "mode": "offline",
                 "sensors": None,
                 "sim_running": False,
+                "last_rx_timestamp": None,
+                "hw_online": False,
             }
 
         client_id = f"dashboard_bridge_{random.randint(1000, 9999)}"
@@ -306,10 +311,12 @@ async def ingest_telemetry(payload: Dict[str, Any]):
         "reservoir_level_ok": drum_ok,
         "pump_state": "RUNNING" if pump_running else "IDLE",
         "last_updated": datetime.now(timezone.utc).isoformat(),
+        "last_rx_timestamp": time.time(),
         "rssi_dbm": payload.get("rssi_dbm", 0),
         "battery_v": float(payload.get("battery_v", bridge.latest_state.get("battery_v", 12.0)) or 12.0),
         "mode": mode,
         "sim_running": mode == "simulator",
+        "hw_online": mode == "hardware",
     })
 
     # 2. Extended multi-sensor state (simulator / balcony POC)
@@ -391,6 +398,14 @@ async def get_status():
     latest_db_reading = bridge.db.get_latest_reading()
     last_pump = bridge.db.get_last_pump_event()
     waterings_today = bridge.db.get_waterings_in_last_24h()
+
+    # Dynamic Heartbeat check: Hardware is online ONLY if telemetry arrived within last 65s
+    last_rx = bridge.latest_state.get("last_rx_timestamp")
+    current_mode = bridge.latest_state.get("mode")
+    if current_mode == "hardware" and last_rx:
+        bridge.latest_state["hw_online"] = (time.time() - last_rx) <= 65.0
+    else:
+        bridge.latest_state["hw_online"] = False
 
     return {
         "live": bridge.latest_state,

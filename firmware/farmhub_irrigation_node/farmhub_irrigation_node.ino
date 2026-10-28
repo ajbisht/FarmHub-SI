@@ -43,9 +43,10 @@ bool delivery_fault = false;
 // ============================================================================
 void setup() {
     // CRITICAL SAFETY RULE 1: Initialize Relay Pin HIGH (OFF) on LINE 1
-    // Active-LOW relays will click ON during boot if GPIO is left floating.
-    pinMode(PIN_RELAY, OUTPUT);
+    // Active-LOW relays: Write HIGH to output register FIRST before enabling OUTPUT mode
+    // to guarantee 0 microsecond boot blip/click when power is connected.
     digitalWrite(PIN_RELAY, HIGH); // HIGH = Relay De-energized (Pump OFF)
+    pinMode(PIN_RELAY, OUTPUT);
 
     pinMode(PIN_STATUS_LED, OUTPUT);
     digitalWrite(PIN_STATUS_LED, LOW);
@@ -222,10 +223,10 @@ void stopWateringCycle(const char* reason) {
 }
 
 void emergencyStop(const char* reason) {
-    digitalWrite(PIN_RELAY, HIGH);
+    digitalWrite(PIN_RELAY, HIGH); // Force relay open / OFF immediately
     digitalWrite(PIN_STATUS_LED, LOW);
-    current_pump_state = PUMP_EMERGENCY_STOP;
-    Serial.printf("[EMERGENCY STOP] %s\n", reason);
+    current_pump_state = PUMP_IDLE; // Reset back to IDLE so system is safe and responsive
+    Serial.printf("[EMERGENCY STOP] %s — Relay forced OFF.\n", reason);
 }
 
 // ============================================================================
@@ -347,8 +348,8 @@ void sendTelemetryPacket() {
         tank_ok ? "true" : "false"
     );
 
-    Serial.printf("\n[Sensors] Pot1 (Mooli): %.1f%% | Pot2 (Methi): %.1f%% | Pot3: %.1f%% | Drum: %s\n",
-                  vwc_pot1, vwc_pot2, vwc_pot3, tank_ok ? "NORMAL (OK)" : "EMPTY (FAULT)");
+    Serial.printf("\n[Sensors] Pot1 (Mooli): %.1f%% [raw=%u] | Pot2 (Methi): %.1f%% [raw=%u] | Pot3: %.1f%% [raw=%u] | Drum: %s\n",
+                  vwc_pot1, raw_pot1, vwc_pot2, raw_pot2, vwc_pot3, raw_pot3, tank_ok ? "NORMAL (OK)" : "EMPTY (FAULT)");
     Serial.println("[Cloud] Dispatching telemetry to Cloud Run...");
 
     WiFiClientSecure secure_client;
@@ -364,8 +365,10 @@ void sendTelemetryPacket() {
         String response = http.getString();
         Serial.printf("[Cloud] Telemetry POST 200 OK. Response: %s\n", response.c_str());
 
-        // Check if response contains an authorized actuation command
-        if (response.indexOf("IRRIGATE_CYCLE") >= 0) {
+        // Check if response contains an authorized actuation or safety stop command
+        if (response.indexOf("\"command\":\"STOP\"") >= 0 || response.indexOf("STOP") >= 0) {
+            emergencyStop("Manual Emergency STOP commanded from Cloud Dashboard");
+        } else if (response.indexOf("IRRIGATE_CYCLE") >= 0) {
             // Parse duration (default 20s if not found)
             startWateringCycle(20);
         }

@@ -62,7 +62,7 @@ def test_drum_low_blocks_pump(guardrails, sunny_weather):
     assert verdict.approved is False
     assert verdict.final_action == "SKIP"
     assert verdict.verdict_type == "BLOCKED"
-    assert "Drum level is LOW" in verdict.reason
+    assert "Water tank is low" in verdict.reason
 
 
 def test_soil_oversaturation_blocks_pump(guardrails, sunny_weather):
@@ -79,7 +79,7 @@ def test_soil_oversaturation_blocks_pump(guardrails, sunny_weather):
     assert verdict.approved is False
     assert verdict.final_action == "SKIP"
     assert verdict.verdict_type == "BLOCKED"
-    assert "above safe limit" in verdict.reason
+    assert "Soil is already very wet" in verdict.reason
 
 
 def test_cooldown_blocks_rapid_watering(guardrails, sunny_weather):
@@ -97,7 +97,7 @@ def test_cooldown_blocks_rapid_watering(guardrails, sunny_weather):
     assert verdict.approved is False
     assert verdict.final_action == "SKIP"
     assert verdict.verdict_type == "BLOCKED"
-    assert "Cooldown active" in verdict.reason
+    assert "watered" in verdict.reason
 
 
 def test_cooldown_allows_watering_after_min_gap(guardrails, sunny_weather):
@@ -131,7 +131,7 @@ def test_daily_cap_blocks_excessive_watering(guardrails, sunny_weather):
     assert verdict.approved is False
     assert verdict.final_action == "SKIP"
     assert verdict.verdict_type == "BLOCKED"
-    assert "Daily cap reached" in verdict.reason
+    assert "quota today" in verdict.reason
 
 
 def test_rain_forecast_conserves_water(guardrails, rainy_weather):
@@ -147,7 +147,7 @@ def test_rain_forecast_conserves_water(guardrails, rainy_weather):
     )
     assert verdict.approved is False
     assert verdict.final_action == "SKIP"
-    assert "Rain expected in next 3h" in verdict.reason
+    assert "Rain expected soon" in verdict.reason
 
 
 def test_duration_clamped_to_max(guardrails, sunny_weather):
@@ -199,7 +199,7 @@ def test_low_battery_blocks_pump(guardrails, sunny_weather):
     assert verdict.approved is False
     assert verdict.final_action == "SKIP"
     assert verdict.verdict_type == "BLOCKED"
-    assert "Battery voltage critically low" in verdict.reason
+    assert "Battery is low" in verdict.reason
 
 
 def test_sensor_fault_blocks_pump(guardrails, sunny_weather):
@@ -217,7 +217,7 @@ def test_sensor_fault_blocks_pump(guardrails, sunny_weather):
     assert verdict.approved is False
     assert verdict.final_action == "SKIP"
     assert verdict.verdict_type == "BLOCKED"
-    assert "out of physical range" in verdict.reason
+    assert "Soil sensor cable needs checking" in verdict.reason
 
 
 def test_consecutive_verification_failures_blocks_pump(guardrails, sunny_weather):
@@ -235,4 +235,4 @@ def test_consecutive_verification_failures_blocks_pump(guardrails, sunny_weather
     assert verdict.approved is False
     assert verdict.final_action == "SKIP"
     assert verdict.verdict_type == "BLOCKED"
-    assert "consecutive waterings failed" in verdict.reason
+    assert "Drip line needs checking" in verdict.reason

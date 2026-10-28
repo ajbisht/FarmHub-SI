@@ -706,6 +706,11 @@ async function triggerWater(durationSec) {
       return;
     }
     updatePumpState("RUNNING");
+    const bpPumpBadge = document.getElementById("bpPumpBadge");
+    if (bpPumpBadge) {
+      bpPumpBadge.textContent = "RUNNING";
+      bpPumpBadge.className = "status-pill pill-active-pump";
+    }
   } catch (e) {
     alert("Network error contacting pump.");
   }
@@ -715,6 +720,11 @@ async function triggerStop() {
   try {
     await fetch("/api/override/stop", { method: "POST" });
     updatePumpState("IDLE");
+    const bpPumpBadge = document.getElementById("bpPumpBadge");
+    if (bpPumpBadge) {
+      bpPumpBadge.textContent = "STOPPED";
+      bpPumpBadge.className = "status-pill pill-idle";
+    }
   } catch (e) {
     alert("Stop request failed.");
   }
@@ -1035,10 +1045,25 @@ document.addEventListener("DOMContentLoaded", () => {
 
 function updateBalconyState(state) {
   if (!state) return;
+  window.__lastBalconyState = state;
 
-  const sensors = state.sensors;
-  const isHardware = state.mode === "hardware";
+  // 0. Compute Heartbeat & Freshness
+  const now = Date.now();
+  let isFresh = false;
+  if (state.hw_online !== undefined) {
+    isFresh = Boolean(state.hw_online);
+  } else if (state.last_rx_timestamp) {
+    isFresh = (now / 1000 - Number(state.last_rx_timestamp)) < 65;
+  } else if (state.last_updated) {
+    const t = new Date(state.last_updated.replace(" ", "T")).getTime();
+    if (!isNaN(t) && (now - t) < 65000) {
+      isFresh = true;
+    }
+  }
+
+  const isHardware = (state.mode === "hardware") && isFresh;
   const isSim = state.mode === "simulator" || state.sim_running;
+  const sensors = state.sensors;
 
   // 1. Update Hardware/Sim Banner
   const hwBanner = document.getElementById("balconyHwBanner");
@@ -1053,10 +1078,14 @@ function updateBalconyState(state) {
   if (hwBanner) {
     if (isHardware) {
       hwBanner.classList.add("hw-connected");
+      hwBanner.classList.remove("hw-sim", "hw-offline");
       if (hwIcon) hwIcon.textContent = "🟢";
       if (hwTitle) hwTitle.textContent = "ESP32 Field Node Connected & Streaming";
       if (hwDesc) hwDesc.textContent = "Receiving live physical sensor telemetry directly from your balcony hardware.";
-      if (hwPill) hwPill.textContent = "LIVE HARDWARE";
+      if (hwPill) {
+        hwPill.textContent = "LIVE HARDWARE";
+        hwPill.className = "hw-banner-pill live";
+      }
       if (hwLiveBadge) {
         hwLiveBadge.textContent = "HW Online";
         hwLiveBadge.className = "tab-badge badge-live";
@@ -1066,26 +1095,53 @@ function updateBalconyState(state) {
         simLiveBadge.className = "tab-badge badge-dim";
       }
       if (bpPayloadMode) {
-        bpPayloadMode.textContent = "ESP32 Hardware";
+        bpPayloadMode.textContent = "ESP32 Hardware Stream";
         bpPayloadMode.className = "metric-tag tag-active";
       }
-    } else {
-      hwBanner.classList.remove("hw-connected");
-      if (hwIcon) hwIcon.textContent = "🔴";
-      if (hwTitle) hwTitle.textContent = "Awaiting Real Hardware Connection";
-      if (hwDesc) hwDesc.textContent = "Currently displaying telemetry from Balcony POC Simulator. Connect your physical ESP32 node to stream live hardware telemetry here.";
-      if (hwPill) hwPill.textContent = "SIMULATED STREAM";
+    } else if (isSim) {
+      hwBanner.classList.remove("hw-connected", "hw-offline");
+      hwBanner.classList.add("hw-sim");
+      if (hwIcon) hwIcon.textContent = "🧪";
+      if (hwTitle) hwTitle.textContent = "Balcony POC Virtual Simulator Active";
+      if (hwDesc) hwDesc.textContent = "Currently displaying telemetry from Balcony POC Simulator. Switch on your physical ESP32 to switch to live hardware stream.";
+      if (hwPill) {
+        hwPill.textContent = "SIMULATED STREAM";
+        hwPill.className = "hw-banner-pill";
+      }
       if (hwLiveBadge) {
         hwLiveBadge.textContent = "Awaiting HW";
         hwLiveBadge.className = "tab-badge badge-dim";
       }
       if (simLiveBadge) {
         simLiveBadge.textContent = "Sim Active";
-        simLiveBadge.className = "tab-badge";
+        simLiveBadge.className = "tab-badge badge-live";
       }
       if (bpPayloadMode) {
         bpPayloadMode.textContent = "Simulator Stream";
         bpPayloadMode.className = "metric-tag tag-sim";
+      }
+    } else {
+      // Hardware is OFFLINE / Awaiting connection
+      hwBanner.classList.remove("hw-connected", "hw-sim");
+      hwBanner.classList.add("hw-offline");
+      if (hwIcon) hwIcon.textContent = "⚪";
+      if (hwTitle) hwTitle.textContent = "Awaiting ESP32 Hardware Connection";
+      if (hwDesc) hwDesc.textContent = "No telemetry received recently. Power on your physical ESP32 node to stream live hardware telemetry here.";
+      if (hwPill) {
+        hwPill.textContent = "HW OFFLINE";
+        hwPill.className = "hw-banner-pill offline";
+      }
+      if (hwLiveBadge) {
+        hwLiveBadge.textContent = "HW Offline";
+        hwLiveBadge.className = "tab-badge badge-dim";
+      }
+      if (simLiveBadge) {
+        simLiveBadge.textContent = "Sim Inactive";
+        simLiveBadge.className = "tab-badge badge-dim";
+      }
+      if (bpPayloadMode) {
+        bpPayloadMode.textContent = "Awaiting ESP32...";
+        bpPayloadMode.className = "metric-tag";
       }
     }
   }
@@ -1216,4 +1272,11 @@ function updateBalconyState(state) {
     if (bpRssi) bpRssi.textContent = `${state.rssi_dbm} dBm`;
   }
 }
+
+// Periodic watchdog to re-evaluate hardware heartbeat freshness every 5s
+setInterval(() => {
+  if (window.__lastBalconyState) {
+    updateBalconyState(window.__lastBalconyState);
+  }
+}, 5000);
 
